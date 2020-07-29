@@ -28,10 +28,11 @@ class AssetManager {
 								SUPPORT = 0x10;
 	final RuneModel runeModel;
 	final NavigableMap<String,Champion> champions;
+	BufferedImage windowIcon;
 	BufferedImage iconSprites;
 	BufferedImage background;
 	AssetManager(DataDragon dragon,String gameVersion) throws IOException{
-		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/en_US/champion.json"), true).getJSMap("data");
+		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/en_US/championFull.json"), true).getJSMap("data");
 		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/en_US/runesReforged.json"), true);
 		HashSet<String> imageCollection = new HashSet<>();
 		JSON.forEachMapEntry(championData, (String key,Object value) -> {
@@ -44,7 +45,14 @@ class AssetManager {
 				imageCollection.add("img/"+JSON.asString(value, true, null));
 			}
 		});
+		String iconPath = gameVersion+"/img/spell/"+championData.getJSMap("Yuumi").getJSList("spells").getJSMap(3).getJSMap("image").getString("full");
+		imageCollection.add(iconPath);
 		dragon.batchPreload(imageCollection);
+		{//Rune Book? Book with power? Why not? Also the reason we need championFull.json which is kinda big. In the future we can improve on this.
+			BufferedImage windIc = (BufferedImage)dragon.fetchObject(iconPath);//Here, Ryze's passive icon is another big candidate.
+			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
+			windowIcon = windIc.getSubimage(0, hy, hx, hy);
+		}
 		runeModel = new RuneModel(runeData, (String str) -> (BufferedImage)dragon.fetchObject("img/"+str));
 		TreeMap<String,Champion> champ = new TreeMap<>();
 		for(Entry<String,Object> entry : championData.map.entrySet()){

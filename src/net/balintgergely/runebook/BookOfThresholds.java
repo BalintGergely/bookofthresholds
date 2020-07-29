@@ -158,6 +158,7 @@ public class BookOfThresholds extends JFrame{
 	private Rune currentRune;
 	private BookOfThresholds(AssetManager assets,HttpClient client,ArrayList<Build> builds){
 		super("The Rune Book of Thresholds");
+		super.setIconImage(assets.windowIcon);
 		this.assetManager = assets;
 		this.clientManager = new ClientManager(client);
 		this.buildListModel = new OpenListModel<>(builds);
@@ -217,6 +218,10 @@ public class BookOfThresholds extends JFrame{
 			buildOptionsToolBar.setFloatable(false);
 			sidePanel.add(buildOptionsToolBar,BorderLayout.PAGE_START);
 			{
+				JButton aboutButton = new JButton("About");
+				aboutButton.setActionCommand("ABOUT");
+				aboutButton.addActionListener(this::actionPerformed);
+				buildOptionsToolBar.add(aboutButton);
 				buildOptionsToolBar.add(exportButton = toolButton(3,4,"EXPORT","Export configuration to League of Legends",false));
 				buildOptionsToolBar.add(completeButton = toolButton(2,4,"FIX","Autocomplete configuration",true));
 				buildOptionsToolBar.add(nameField = new JTextField(16));
@@ -349,7 +354,10 @@ public class BookOfThresholds extends JFrame{
 							JOptionPane.showMessageDialog(this, str);
 						}
 						}, EVENT_QUEUE);
-			}
+			}break;
+		case "ABOUT":
+			JOptionPane.showMessageDialog(null, "Rune Book for League of Legends by Bálint János Gergely.\r\n"
+					+ "Get updates at: github.com/BalintGergely/bookofthresholds");
 		}
 	}
 }
