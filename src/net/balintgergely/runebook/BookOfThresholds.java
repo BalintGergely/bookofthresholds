@@ -15,7 +15,6 @@ import java.io.Writer;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -45,13 +44,6 @@ public class BookOfThresholds extends JFrame{
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final Executor EVENT_QUEUE = EventQueue::invokeLater;
 	public static void main(String[] atgs) throws Throwable{
-		{
-			String osName = System.getProperty("os.name");
-			if(!osName.toLowerCase(Locale.ENGLISH).contains("win")){
-				JOptionPane.showMessageDialog(null, osName+" is not supported.");
-				return; 
-			}
-		}
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){}//Eat
@@ -70,6 +62,13 @@ public class BookOfThresholds extends JFrame{
 		}
 		CompletableFuture<BookOfThresholds> cmpl = new CompletableFuture<>();
 		{
+			ClientManager clm;
+			try{
+				clm = new ClientManager(client);
+			}catch(Throwable th){
+				clm = null;
+				JOptionPane.showMessageDialog(null, th.getMessage()+"\r\nRune Book of Thresholds will not be able to export runes.");
+			}
 			ArrayList<Build> buildList = new ArrayList<Build>(0);
 			if(SAVE_FILE.exists()){
 				try(FileReader reader = new FileReader(SAVE_FILE,StandardCharsets.UTF_8)){
@@ -97,9 +96,10 @@ public class BookOfThresholds extends JFrame{
 					t.printStackTrace();
 				}
 			}
+			final ClientManager clientManager = clm;
 			EventQueue.invokeAndWait(() -> {
 				try{
-					cmpl.complete(new BookOfThresholds(assets, client, buildList));
+					cmpl.complete(new BookOfThresholds(assets, clientManager, buildList));
 				}catch(Throwable e){
 					cmpl.completeExceptionally(e);
 				}
@@ -156,11 +156,11 @@ public class BookOfThresholds extends JFrame{
 	private Build currentBuild;
 	private LargeBuildPanel buildPanel;
 	private Rune currentRune;
-	private BookOfThresholds(AssetManager assets,HttpClient client,ArrayList<Build> builds){
+	private BookOfThresholds(AssetManager assets,ClientManager client,ArrayList<Build> builds){
 		super("The Rune Book of Thresholds");
 		super.setIconImage(assets.windowIcon);
 		this.assetManager = assets;
-		this.clientManager = new ClientManager(client);
+		this.clientManager = client;
 		this.buildListModel = new OpenListModel<>(builds);
 		this.buildList = new CopyOnWriteArrayList<>(builds);
 		JPanel mainPanel = new JPanel(new BorderLayout()) {
@@ -276,7 +276,7 @@ public class BookOfThresholds extends JFrame{
 		currentRune = buildPanel.getRune(false);
 		boolean runeComplete = currentRune != null;
 		saveButton.setEnabled(runeComplete);
-		exportButton.setEnabled(runeComplete);
+		exportButton.setEnabled(clientManager != null && runeComplete);
 		completeButton.setEnabled(!runeComplete);
 	}
 	private void actionPerformed(ActionEvent e){

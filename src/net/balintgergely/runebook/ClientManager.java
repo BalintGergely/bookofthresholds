@@ -98,10 +98,20 @@ public class ClientManager{
 		return sslContext;
 	}
 	private final String address;
+	private final ProcessBuilder ppFetcher;
 	HttpClient client;
 	public ClientManager(HttpClient client){
 		this.client = client;
 		address = InetAddress.getLoopbackAddress().getHostAddress();
+		String osName = System.getProperty("os.name");
+		String osLowerCase = osName.toLowerCase();
+		if(osLowerCase.contains("win")){
+			ppFetcher = new ProcessBuilder("WMIC", "process", "where", "name='LeagueClientUx.exe'", "get", "commandLine");
+		}else if(osLowerCase.contains("mac")){
+			ppFetcher = new ProcessBuilder("ps", "x", "|", "grep", "'LeagueClientUx.exe'");
+		}else{
+			throw new Error("Connecting to the League Client on "+osLowerCase+" is not supported.");
+		}
 	}
 	private Function<String,HttpRequest.Builder> conref;
 	public boolean tryConnect(){
@@ -109,8 +119,7 @@ public class ClientManager{
 		int port;
 		try{
 			String processData = new String(//To get the password and port.
-			new ProcessBuilder("WMIC", "process", "where", "name='LeagueClientUx.exe'", "get", "commandLine")
-				.start().getInputStream().readAllBytes(),StandardCharsets.UTF_8);
+				ppFetcher.start().getInputStream().readAllBytes(),StandardCharsets.UTF_8);
 			Matcher matcher = PASSWORD_PATTERN.matcher(processData);
 			matcher.find();
 			password = matcher.group("group");
