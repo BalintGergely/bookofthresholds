@@ -111,9 +111,10 @@ public class DataDragon {
 						try(InputStream input = response.body()){
 							BufferedImage img = ImageIO.read(input);
 							if(img == null){
-								Map.of();
+								System.err.println("Could not resolve route: "+str);
+							}else{
+								data.put(str, img);
 							}
-							data.put(str, img);
 						}catch(IOException e){
 							throw new UncheckedIOException(e);
 						}
@@ -136,7 +137,7 @@ public class DataDragon {
 	/**
 	 * Finishes loading. No more data fetching will take place and the cache file will be written if changed.
 	 */
-	public void finish() throws IOException{
+	public boolean finish() throws IOException{
 		httpClient = null;
 		a: if(!file.exists()){
 			file.createNewFile();
@@ -147,7 +148,7 @@ public class DataDragon {
 				}
 			}
 			if(cache.isEmpty()){
-				return;//No new images, no unused images
+				return false;//No new images, no unused images
 			}//Found unused images that we now remove.
 		}
 		try(ZipOutputStream output = new ZipOutputStream(new FileOutputStream(file))){
@@ -166,5 +167,6 @@ public class DataDragon {
 			}
 			output.finish();
 		}
+		return true;
 	}
 }

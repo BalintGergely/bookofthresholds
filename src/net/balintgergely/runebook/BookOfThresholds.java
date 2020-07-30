@@ -50,14 +50,21 @@ public class BookOfThresholds extends JFrame{
 		HttpClient client;
 		DataDragon dragon;
 		AssetManager assets;
+		System.out.println("Initializing Nexus...");
 		try{
 			client = HttpClient.newBuilder().sslContext(ClientManager.makeContext()).build();
+			System.out.println("Confronting Data Dragon...");
 			dragon = new DataDragon(new File("dataDragon.zip"), client);
 			assets = new AssetManager(dragon, "10.15.1");
-			dragon.finish();
+			System.out.println("Securing Cloud to Earth...");
+			if(dragon.finish()){
+				System.out.println("File updated.");
+			}else{
+				System.out.println("File not updated.");
+			}
 		}catch(Throwable t){
 			t.printStackTrace();
-			JOptionPane.showMessageDialog(null, t.getMessage(), "Failed to start Book of Thresholds", JOptionPane.ERROR_MESSAGE);
+			JOptionPane.showMessageDialog(null, t.getMessage(), "Failed to start Rune Book of Thresholds", JOptionPane.ERROR_MESSAGE);
 			return;
 		}
 		CompletableFuture<BookOfThresholds> cmpl = new CompletableFuture<>();
@@ -70,6 +77,7 @@ public class BookOfThresholds extends JFrame{
 				JOptionPane.showMessageDialog(null, th.getMessage()+"\r\nRune Book of Thresholds will not be able to export runes.");
 			}
 			ArrayList<Build> buildList = new ArrayList<Build>(0);
+			System.out.println("Loading saved runes...");
 			if(SAVE_FILE.exists()){
 				try(FileReader reader = new FileReader(SAVE_FILE,StandardCharsets.UTF_8)){
 					JSMap dataMap = JSON.asJSMap(JSON.readObject(reader), true);
@@ -79,7 +87,8 @@ public class BookOfThresholds extends JFrame{
 						try{
 							JSMap bld = JSON.asJSMap(obj, true);
 							String name = bld.peekString("name");
-							Champion champion = assets.champions.get(bld.peekString("champion"));
+							String champ = bld.peekString("champion");
+							Champion champion = champ == null ? null : assets.champions.get(champ);
 							byte roles = bld.peekByte("roles");
 							JSList perks = bld.getJSList("selectedPerkIds");
 							ArrayList<Stone> stoneList = new ArrayList<>();
@@ -96,6 +105,7 @@ public class BookOfThresholds extends JFrame{
 					t.printStackTrace();
 				}
 			}
+			System.out.println("Initializing window...");
 			final ClientManager clientManager = clm;
 			EventQueue.invokeAndWait(() -> {
 				try{
@@ -106,6 +116,7 @@ public class BookOfThresholds extends JFrame{
 			});
 		}
 		BookOfThresholds runeBook = cmpl.get();
+		System.out.println("Done. Book, meet new friend!");
 		long nextSaveTime = 0;
 		while(true){
 			synchronized(runeBook.buildList){
@@ -128,10 +139,14 @@ public class BookOfThresholds extends JFrame{
 				JSList buildList = new JSList(runeBook.buildList.size());
 				runeBook.buildListChanged = false;
 				for(Build build : runeBook.buildList){
-					buildList.add(build.getRune().toJSMap().put(
+					JSMap mp = build.getRune().toJSMap().put(
 							"name",build.getName(),
-							"champion",build.getChampion().id,
-							"roles",build.getRoles()));
+							"roles",build.getRoles());
+					Champion ch = build.getChampion();
+					if(ch != null){
+						mp.put("champion",ch.id);
+					}
+					buildList.add(mp);
 				}
 				JSMap dataMap = new JSMap(Map.of("builds",buildList));
 				try(Writer writer = new JSON.PrettyWriter(new FileWriter(SAVE_FILE,StandardCharsets.UTF_8))){
@@ -188,19 +203,20 @@ public class BookOfThresholds extends JFrame{
 				g.drawImage(assetManager.background, (width-imgwidth)/2, (height-imgheight)/2, imgwidth, imgheight, null);
 			}
 		};
+		mainPanel.setPreferredSize(new Dimension(1200, 675));//  3/4 the size of the image
 		super.add(mainPanel);
 		buildListModel.addListSelectionListener(this::valueChanged);
 		super.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		{
 
 			JList<Build> list = new JList<>(buildListModel);
-			list.setPreferredSize(new Dimension(380, 200));
 			list.setOpaque(false);
 			list.setBackground(new Color(0,true));
 			list.setSelectionModel(buildListModel);
 			list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
 			list.setVisibleRowCount(0);
 			list.setCellRenderer(new BuildRenderer(assetManager));
+			list.setDragEnabled(true);
 			JScrollPane sp = new JScrollPane(list,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 			sp.setBorder(null);
 			sp.setOpaque(false);
@@ -222,7 +238,10 @@ public class BookOfThresholds extends JFrame{
 				aboutButton.setActionCommand("ABOUT");
 				aboutButton.addActionListener(this::actionPerformed);
 				buildOptionsToolBar.add(aboutButton);
-				buildOptionsToolBar.add(exportButton = toolButton(3,4,"EXPORT","Export configuration to League of Legends",false));
+				buildOptionsToolBar.add(exportButton = toolButton(3,4,"EXPORT",
+						client == null ? "Currently unable to export runes." : "Export configuration to League of Legends",
+						false));
+				exportButton.setVisible(false);
 				buildOptionsToolBar.add(completeButton = toolButton(2,4,"FIX","Autocomplete configuration",true));
 				buildOptionsToolBar.add(nameField = new JTextField(16));
 				buildOptionsToolBar.add(eraseButton = toolButton(1,4,"ERASE","Erase current configuration",false));
@@ -277,7 +296,8 @@ public class BookOfThresholds extends JFrame{
 		boolean runeComplete = currentRune != null;
 		saveButton.setEnabled(runeComplete);
 		exportButton.setEnabled(clientManager != null && runeComplete);
-		completeButton.setEnabled(!runeComplete);
+		exportButton.setVisible(runeComplete);
+		completeButton.setVisible(!runeComplete);
 	}
 	private void actionPerformed(ActionEvent e){
 		switch(e.getActionCommand()){

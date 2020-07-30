@@ -36,15 +36,15 @@ class AssetManager {
 		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/en_US/runesReforged.json"), true);
 		HashSet<String> imageCollection = new HashSet<>();
 		JSON.forEachMapEntry(championData, (String key,Object value) -> {
-			if("sprite".equals(key)){
-				imageCollection.add(gameVersion+"/img/sprite/"+JSON.asString(value, true, null));
+			if("image".equals(key)){
+				imageCollection.add(gameVersion+"/img/sprite/"+JSON.asJSMap(value, true).getString("sprite"));
 			}
-		});
+		},1);
 		JSON.forEachMapEntry(runeData, (String key,Object value) -> {
 			if("icon".equals(key)){
 				imageCollection.add("img/"+JSON.asString(value, true, null));
 			}
-		});
+		},-1);
 		String iconPath = gameVersion+"/img/spell/"+championData.getJSMap("Yuumi").getJSList("spells").getJSMap(3).getJSMap("image").getString("full");
 		imageCollection.add(iconPath);
 		dragon.batchPreload(imageCollection);

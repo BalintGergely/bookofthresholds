@@ -879,49 +879,55 @@ public final class JSON {
 		}
 		return value.toString();//May return null.
 	}
-	public static void forEachMapEntry(Object obj,BiConsumer<String,Object> cns){
+	public static void forEachMapEntry(Object obj,BiConsumer<String,Object> cns,int maxDepth){
 		if(obj instanceof JSMap){
 			obj = ((JSMap)obj).map;
 		}
 		if(obj instanceof Map){
+			maxDepth--;
 			for(Map.Entry<?,?> entry : ((Map<?,?>)obj).entrySet()){
 				Object k = entry.getKey();
 				if(k instanceof String || (k = k.toString()) != null){
 					Object value = entry.getValue();
 					cns.accept((String)k, value);
-					if(value instanceof JSMap || value instanceof Map || value instanceof JSList || value instanceof Iterable){
-						forEachMapEntry(value, cns);
+					if(maxDepth != -1){
+						forEachMapEntry(value, cns, maxDepth);
 					}
 				}
 			}
 		}else if(obj instanceof Iterable){
-			for(Object v : (Iterable<?>)obj){
-				if(v != null){
-					forEachMapEntry(v, cns);
+			if(maxDepth != 0){
+				maxDepth--;
+				for(Object v : (Iterable<?>)obj){
+					if(v != null){
+						forEachMapEntry(v, cns, maxDepth);
+					}
 				}
 			}
 		}
 	}
-	public static void forEachValue(Object obj,Consumer<Object> cns){
+	public static void forEachValue(Object obj,Consumer<Object> cns,int maxDepth){
 		if(obj instanceof JSMap){
 			obj = ((JSMap)obj).map;
 		}
 		if(obj instanceof Map){
+			maxDepth--;
 			for(Map.Entry<?,?> entry : ((Map<?,?>)obj).entrySet()){
 				Object k = entry.getKey();
 				if(k instanceof String || k.toString() != null){
 					Object value = entry.getValue();
 					cns.accept(value);
-					if(value instanceof JSMap || value instanceof Map || value instanceof JSList || value instanceof Iterable){
-						forEachValue(value, cns);
+					if(maxDepth != -1){
+						forEachValue(value, cns, maxDepth);
 					}
 				}
 			}
 		}else if(obj instanceof Iterable){
+			maxDepth--;
 			for(Object v : (Iterable<?>)obj){
 				cns.accept(v);
-				if(v != null){
-					forEachValue(v, cns);
+				if(maxDepth != -1){
+					forEachValue(v, cns, maxDepth);
 				}
 			}
 		}
