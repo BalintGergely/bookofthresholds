@@ -167,9 +167,11 @@ public class LargeBuildPanel extends JPanel{
 		for(List<RuneButtonModel> lst : model.primarySlotModels){
 			rowOfButtons(g, leftGroup, lst, TYPE_RUNESTONE, true);
 		}
+		leftGroup.hor.addGap(152);
 		for(List<RuneButtonModel> lst : model.secondarySlotModels){
 			rowOfButtons(g, rightGroup, lst, TYPE_RUNESTONE, true);
 		}
+		rightGroup.hor.addGap(152);
 		for(List<RuneButtonModel> lst : model.statSlotModels){
 			rowOfButtons(g, rightGroup, lst, TYPE_STAT_MOD, false);
 		}

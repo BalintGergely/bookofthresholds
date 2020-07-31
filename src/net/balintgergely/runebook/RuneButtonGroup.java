@@ -115,6 +115,13 @@ public class RuneButtonGroup{
 		}
 		if(rune.secondaryPath != null){
 			secondaryPathModels.get(rune.secondaryPath.order).setSelected(true);
+			if(rune.primaryPath == null){
+				for(List<RuneButtonModel> grp : statSlotModels){
+					for(RuneButtonModel g : grp){
+						g.fireBridge();
+					}
+				}
+			}
 		}
 		int slots = primaryPathElements.length;
 		for(int i = 0;i < slots;i++){
@@ -211,6 +218,13 @@ public class RuneButtonGroup{
 			for(int i = 0;i < len;i++){
 				secondaryPathModels.get(i).fireBridge();
 			}
+			if(primaryPath == null){
+				for(List<RuneButtonModel> grp : statSlotModels){
+					for(RuneButtonModel g : grp){
+						g.fireBridge();
+					}
+				}
+			}
 		}else{
 			secondA = null;
 			secondB = null;
@@ -275,7 +289,7 @@ public class RuneButtonGroup{
 		}
 		@Override
 		public boolean isEnabled() {
-			return forPrimaryPath || (primaryPath != null && primaryPath != alt) || secondaryPath != null;
+			return forPrimaryPath || (primaryPath != null && primaryPath != alt) || secondaryPath == this;
 		}
 		private void deselect(){
 			if(forPrimaryPath){
@@ -294,15 +308,16 @@ public class RuneButtonGroup{
 				if(forPrimaryPath){
 					if(primaryPath != this){
 						boolean firstSelection = primaryPath == null;
-						if(!firstSelection){
-							primaryPath.deselect();
-						}
-						primaryPath = this;
 						if(secondaryPath != null && secondaryPath == alt){
 							alt.deselect();
 							pathChanged(false);
 						}
+						if(!firstSelection){
+							primaryPath.deselect();
+						}
+						primaryPath = this;
 						super.setSelected(true);
+						alt.fireStateChanged();
 						pathChanged(true);
 						fireGlobalStateChanged();
 						if(firstSelection){
@@ -439,7 +454,7 @@ public class RuneButtonGroup{
 		}
 		@Override
 		public boolean isEnabled() {
-			return primaryPath != null;
+			return primaryPath != null || secondaryPath != null;
 		}
 		private void deselect(){
 			statModElements[slot] = null;
