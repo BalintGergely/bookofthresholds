@@ -100,8 +100,10 @@ public class ClientManager{
 	private final String address;
 	private final ProcessBuilder ppFetcher;
 	HttpClient client;
-	public ClientManager(HttpClient client){
+	private AssetManager assetManager;
+	public ClientManager(AssetManager manager,HttpClient client){
 		this.client = client;
+		this.assetManager = manager;
 		address = InetAddress.getLoopbackAddress().getHostAddress();
 		String osName = System.getProperty("os.name");
 		String osLowerCase = osName.toLowerCase();
@@ -150,7 +152,7 @@ public class ClientManager{
 	}
 	public CompletionStage<String> exportRune(Rune rune,String name){
 		if(conref == null && !tryConnect()){
-			return CompletableFuture.completedFuture("Could not connect to the League Client!");
+			return CompletableFuture.completedFuture(assetManager.z.getString("cnc"));
 		}
 		BodyPublisher runeExport = BodyPublishers.ofString(rune.toJSMap()
 				.put("name", name, "current", true)
@@ -189,7 +191,7 @@ public class ClientManager{
 				int code = response.statusCode();
 				if(code/100 != 2){
 					conref = null;
-					return "Error code: "+code;
+					return assetManager.z.getString("errorCode")+" "+code;
 				}else{
 					return null;
 				}

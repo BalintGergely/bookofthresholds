@@ -9,6 +9,8 @@ import java.util.Map.Entry;
 import javax.imageio.ImageIO;
 
 import java.util.NavigableMap;
+import java.util.PropertyResourceBundle;
+import java.util.ResourceBundle;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.image.BufferedImage;
@@ -31,9 +33,11 @@ class AssetManager {
 	BufferedImage windowIcon;
 	BufferedImage iconSprites;
 	BufferedImage background;
+	PropertyResourceBundle z = (PropertyResourceBundle) ResourceBundle.getBundle("locale");
 	AssetManager(DataDragon dragon,String gameVersion) throws IOException{
-		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/en_US/championFull.json"), true).getJSMap("data");
-		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/en_US/runesReforged.json"), true);
+		String locale = z.getString("dataDragonLocale");
+		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/"+locale+"/championFull.json"), true).getJSMap("data");
+		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/"+locale+"/runesReforged.json"), true);
 		HashSet<String> imageCollection = new HashSet<>();
 		JSON.forEachMapEntry(championData, (String key,Object value) -> {
 			if("image".equals(key)){
@@ -53,7 +57,7 @@ class AssetManager {
 			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
 			windowIcon = windIc.getSubimage(0, hy, hx, hy);
 		}
-		runeModel = new RuneModel(runeData, (String str) -> (BufferedImage)dragon.fetchObject("img/"+str));
+		runeModel = new RuneModel(runeData, (String str) -> (BufferedImage)dragon.fetchObject("img/"+str), this);
 		TreeMap<String,Champion> champ = new TreeMap<>();
 		for(Entry<String,Object> entry : championData.map.entrySet()){
 			String name = entry.getKey();

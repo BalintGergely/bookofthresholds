@@ -1,17 +1,24 @@
 package net.balintgergely.runebook;
 
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.io.IOException;
 import java.util.Objects;
 
-public class Build {
+public class Build implements Transferable{
+	private static final DataFlavor DATA_FLAVOR = new DataFlavor(Build.class, "Rune Book Page");
 	private Champion champion;
 	private byte roles;
 	private Rune rune;
 	private String name;
-	public Build(String name,Champion champion,Rune rune,byte roles){
+	long timestamp;
+	public Build(String name,Champion champion,Rune rune,byte roles,long timestamp){
 		this.name = Objects.requireNonNull(name);
 		this.roles = roles;
 		this.rune = Objects.requireNonNull(rune);
 		this.champion = champion;
+		this.timestamp = timestamp;
 	}
 	public Champion getChampion(){
 		return champion;
@@ -36,5 +43,20 @@ public class Build {
 	}
 	public void setName(String name){
 		this.name = Objects.requireNonNull(name);
+	}
+	@Override
+	public DataFlavor[] getTransferDataFlavors() {
+		return new DataFlavor[]{DATA_FLAVOR};
+	}
+	@Override
+	public boolean isDataFlavorSupported(DataFlavor flavor) {
+		return flavor.equals(DATA_FLAVOR);
+	}
+	@Override
+	public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {
+		if(!flavor.equals(DATA_FLAVOR)){
+			throw new UnsupportedFlavorException(flavor);
+		}
+		return this;
 	}
 }

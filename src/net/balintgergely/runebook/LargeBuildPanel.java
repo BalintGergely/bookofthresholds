@@ -32,13 +32,13 @@ import java.awt.Graphics2D;
 
 public class LargeBuildPanel extends JPanel{
 	private static final boolean VERTICAL = true,HORIZONTAL = false;
-									
 	private static final byte	TYPE_PRIMARY_PATH = 0,
 								TYPE_SECONDARY_PATH = 1,
 								TYPE_KEYSTONE = 2,
 								TYPE_RUNESTONE = 3,
 								TYPE_STAT_MOD = 4;
 	private static final long serialVersionUID = 1L;
+	private static final String[] ROLE_NAMES = new String[]{"roleTop","roleMid","roleBot","roleJg","roleSp"};
 	private IdentityHashMap<Image, Image> grayscaleIconVariants = new IdentityHashMap<>();
 	private Function<Image, Image> getGrayscaleImage = (Image a) -> {
 		RGBImageFilter filter = new RGBImageFilter(){
@@ -60,8 +60,8 @@ public class LargeBuildPanel extends JPanel{
 	public void setRune(Rune rn){
 		model.setRune(rn);
 	}
-	public Rune getRune(boolean fix){
-		return model.getRune(fix);
+	public Rune getRune(){
+		return model.getRune();
 	}
 	public Champion getChampion(){
 		return (Champion)championBox.getSelectedItem();
@@ -91,7 +91,7 @@ public class LargeBuildPanel extends JPanel{
 		GroupLayout g = new GroupLayout(this);
 		super.setLayout(g);
 		g.setHonorsVisibility(false);
-		GLG mainGroup = new GLG(g, VERTICAL, Alignment.CENTER, false);
+		GLG mainGroup = new GLG(g, VERTICAL, Alignment.LEADING, false);
 		GLG buildGroup0 = new GLG(g, HORIZONTAL, Alignment.CENTER, false);
 		//GLG buildGroup1 = new GLG(g, HORIZONTAL, Alignment.CENTER, false);
 		mainGroup.add(buildGroup0);
@@ -99,6 +99,7 @@ public class LargeBuildPanel extends JPanel{
 		{
 			Collection<Champion> championList = assetManager.champions.values();
 			championBox = new JComboBox<>(championList.toArray(new Champion[championList.size()+1]));
+			championBox.setOpaque(false);
 			championBox.setSelectedItem(null);
 			JLabel rendererLabel = new JLabel();
 			rendererLabel.setOpaque(true);
@@ -109,16 +110,19 @@ public class LargeBuildPanel extends JPanel{
 			        boolean isSelected,
 			        boolean cellHasFocus) -> {
 			        	rendererLabel.setIcon(value);
-			        	rendererLabel.setText(value == null ? "" : value.toString());
+			        	rendererLabel.setText(cellHasFocus || value == null ? "" : value.toString());
 			        	rendererLabel.setBackground(isSelected ? Color.WHITE : Color.LIGHT_GRAY);
 			        	return rendererLabel;
 			        });
+			championBox.setMaximumSize(championBox.getPreferredSize());
 			buildGroup0.add(championBox);
 		}
 		{
 			roles = new RoleDisplayButton[5];
 			for(int i = 0;i < 5;i++){
-				buildGroup0.add(roles[i] = new RoleDisplayButton(assetManager,(byte)(1 << i)));
+				RoleDisplayButton bt = new RoleDisplayButton(assetManager,(byte)(1 << i));
+				bt.setToolTipText(assetManager.z.getString(ROLE_NAMES[i]));
+				buildGroup0.add(roles[i] = bt);
 			}
 		}
 		GLG meatGroup = new GLG(g, HORIZONTAL, Alignment.CENTER, false);

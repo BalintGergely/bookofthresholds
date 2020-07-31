@@ -14,39 +14,51 @@ import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 
 public final class Rune implements Comparator<Stone>{
+	public final RuneModel model;
 	public final Path primaryPath;
 	public final Path secondaryPath;
 	public final List<Stone> stoneList;
-	public Rune(Stone... paramStones){
-		this(Arrays.asList(paramStones));
-	}
-	public Rune(Collection<Stone> stoneCollection){
-		RuneModel model = null;
-		Path alphaPath = null,bravoPath = null;
-		int inAlpha = 0,inBravo = 0,inStat = 0;
+	public final boolean isComplete;
+	public Rune(RuneModel model,Path primaryPath,Path secondaryPath,Collection<Stone> stoneCollection){
+		int inPrimary = 0,inSecondary = 0;
 		int count = 0;
+		boolean pathLocked = primaryPath != null || secondaryPath != null;
 		Stone[] stoneArray = new Stone[stoneCollection.size()];
 		for(Stone stone : stoneCollection){
 			stoneArray[count++] = stone;
 			if(stone instanceof Runestone){
-				Path pt = ((Runestone)stone).path;
+				Runestone rst = (Runestone)stone;
+				Path pt = rst.path;
 				if(model == null){
 					model = pt.model;
 				}else if(model != pt.model){
 					throw new IllegalArgumentException("Model mismatch!");
 				}
-				if(inAlpha == 0){
-					alphaPath = pt;
-					inAlpha = 1;
-				}else if(pt == alphaPath){
-					inAlpha++;
-				}else if(inBravo == 0){
-					bravoPath = pt;
-					inBravo = 1;
-				}else if(pt == bravoPath){
-					inBravo++;
+				if(pt == primaryPath){
+					inPrimary++;
+				}else if(pt == secondaryPath){
+					inSecondary++;
+				}else if(primaryPath == null){
+					primaryPath = pt;
+					inPrimary = 1;
+				}else if(secondaryPath == null){
+					secondaryPath = pt;
+					inSecondary = 1;
 				}else{
 					throw new IllegalArgumentException("Third path not allowed!");
+				}
+				if(rst.slot == 0){
+					if(pt == secondaryPath){
+						if(pathLocked){
+							throw new IllegalArgumentException("Secondary path can not have a keystone!");
+						}
+						secondaryPath = primaryPath;
+						primaryPath = pt;
+						int ct = inPrimary;
+						inPrimary = inSecondary;
+						inSecondary = ct;
+					}
+					pathLocked = true;//pt == primaryPath and it should stay that way.
 				}
 			}else if(stone instanceof Statstone){
 				RuneModel lm = ((Statstone)stone).model;
@@ -55,74 +67,251 @@ public final class Rune implements Comparator<Stone>{
 				}else if(model != lm){
 					throw new IllegalArgumentException("Model mismatch!");
 				}
-				inStat++;
 			}else{
 				throw new IllegalArgumentException("Unsupported stone type!");
 			}
 		}
+		if(model == null){
+			throw new IllegalArgumentException("Unable to resolve model!");
+		}
 		if(count != stoneArray.length){
 			throw new ConcurrentModificationException();
 		}
-		if(inAlpha < inBravo){
-			primaryPath = bravoPath;
-			secondaryPath = alphaPath;
-			int k = inAlpha;
-			inAlpha = inBravo;
-			inBravo = k;
-			alphaPath = primaryPath;
-			bravoPath = secondaryPath;
+		if(!pathLocked && inSecondary > 2){
+			this.primaryPath = secondaryPath;
+			this.secondaryPath = primaryPath;
+			int k = inPrimary;
+			inPrimary = inSecondary;
+			inSecondary = k;
+			primaryPath = this.primaryPath;
+			secondaryPath = this.secondaryPath;
 		}else{
-			primaryPath = alphaPath;
-			secondaryPath = bravoPath;
+			this.primaryPath = primaryPath;
+			this.secondaryPath = secondaryPath;
 		}
-		int offset = alphaPath.getSlotCount();
-		int stones = model.getStatSlotCount();
-		if(model != bravoPath.model || inAlpha != offset || inBravo != 2 || inStat != stones){
+		if(inSecondary > 2){
+			throw new IllegalArgumentException("Can not have more than 2 stones in secondary path!");
+		}
+		if((secondaryPath != null && model != secondaryPath.model) || (primaryPath != null && model != primaryPath.model)){
 			throw new IllegalArgumentException("Model mismatch!");
+		}//Order as follows: Keystone, Alpha1,Alpha2,Alpha3,Bravo1,Bravo2, Finally statstones in their sorting assist order.
+		Arrays.sort(stoneArray, this);//This will throw a slot conflict if multiple stones fill the same slot.
+		int statSlot = 0;
+		int statSlotCount = model.getStatSlotCount();
+		for(int i = inPrimary+inSecondary;i < count;i++){
+			Statstone stone = (Statstone)stoneArray[i];
+			if(stone.minSlot > statSlot){
+				statSlot = stone.minSlot;
+			}else if(statSlot > stone.maxSlot){
+				throw new IllegalArgumentException("Illegal stat stone config!");
+			}
+			statSlot++;
+		}//Complete when all primary path slots are filled, 2 bravo slots are filled and all stat stone slots are filled.
+		isComplete = primaryPath != null && inPrimary == primaryPath.getSlotCount() && inSecondary == 2 && (count-inPrimary-inSecondary) == statSlotCount;
+		stoneList = List.of(stoneArray);
+		this.model = model;
+	}
+	private Rune(Path primary,Path secondary,List<Stone> stoneList){
+		this.model = primary.model;
+		this.primaryPath = primary;
+		this.secondaryPath = secondary;
+		this.stoneList = stoneList;
+		this.isComplete = true;
+	}
+	public Rune fix(){
+		if(isComplete){
+			return this;
 		}
-		Arrays.sort(stoneArray, this);
-		offset += 2;
-		a: for(int i = 0;i < stones;i++){
-			int stonesInSlot = model.getStatSlotLength(i);
-			Stone stone = stoneArray[i+offset];
-			for(int k = 0;k < stonesInSlot;k++){
-				if(model.getStatstone(i, k) == stone){
+		int offset;
+		Path primary = primaryPath == null ? model.getPath(0) : primaryPath;
+		Path secondary = secondaryPath == null ? model.getPath(primary.order == 0 ? 1 : 0) : secondaryPath;
+		offset = primary.getSlotCount();
+		Stone[] stones = new Stone[offset+2+model.getStatSlotCount()];
+		int indexNew = 0,indexOld = 0,limitOld = stoneList.size();
+		for(;indexNew < offset;indexNew++){
+			Stone candidate = indexOld == limitOld ? null : stoneList.get(indexOld);
+			if(candidate instanceof Runestone){
+				Runestone st = ((Runestone)candidate);
+				if(st.path == primary && st.slot == indexNew){
+					stones[indexNew] = st;
+					indexOld++;
+					continue;
+				}
+			}
+			stones[indexNew] = primary.getStone(indexNew, 0);
+		}
+		Runestone second0 = null,second1 = null;
+		for(int i = 0;i < 2;i++){
+			Stone candidate = indexOld == limitOld ? null : stoneList.get(indexOld);
+			if(candidate instanceof Runestone){
+				Runestone st = (Runestone)candidate;
+				if(st.path == secondaryPath){
+					if(i == 0){
+						second0 = st;
+					}else{
+						second1 = st;
+					}
+					indexOld++;
+					continue;
+				}
+			}
+			if(i == 0){
+				second0 = secondary.getStone(1, 0);
+			}else{
+				second1 = secondary.getStone(second0.slot == 1 ? 2 : 1, 0);
+			}
+		}
+		if(second0.slot > second1.slot){
+			stones[offset++] = second1;
+			stones[offset++] = second0;
+		}else{
+			stones[offset++] = second0;
+			stones[offset++] = second1;
+		}
+		int slots = model.getStatSlotCount();
+		a: for(int i = 0;i < slots;i++){
+			Stone candidate = indexOld == limitOld ? null : stoneList.get(indexOld);
+			if(candidate instanceof Statstone){
+				Statstone st = (Statstone)candidate;
+				if(st.minSlot <= i){
+					stones[offset+i] = candidate;
+					indexOld++;
 					continue a;
 				}
 			}
-			throw new IllegalArgumentException("Illegal stat stone config");
+			stones[offset+i] = model.getStatstone(i, 0);
 		}
-		stoneList = List.of(stoneArray);
+		return new Rune(primary, secondary, List.of(stones));
 	}
 	public int statStoneOffset(){
-		return stoneList.size()-primaryPath.model.getStatSlotCount();
+		int i = stoneList.size();
+		while(i > 0){
+			i--;
+			if(stoneList.get(i) instanceof Runestone){
+				return i+1;
+			}
+		}
+		return 0;
+	}
+	public Stone getSelectedStone(int path,int slot){
+		int searchIndex = slot;
+		switch(path){
+		case 1:if(primaryPath != null)searchIndex += primaryPath.getSlotCount();//$FALL-THROUGH$
+		case 0:
+			Path p = path == 0 ? primaryPath : secondaryPath;
+			if(p == null){
+				return null;
+			}
+			if(searchIndex >= stoneList.size()){
+				searchIndex = stoneList.size()-1;
+			}
+			while(searchIndex >= 0){
+				Stone stone = stoneList.get(searchIndex);
+				if(stone instanceof Runestone){
+					Runestone st = (Runestone)stone;
+					if(st.path == p){
+						if(st.slot == slot){
+							return st;
+						}
+						if(st.slot < slot){
+							return null;
+						}
+					}else if(path == 1){
+						return null;
+					}
+				}
+				searchIndex--;
+			}
+			return null;
+		case 2:
+			int offset = statStoneOffset();
+			int limit = stoneList.size();
+			int currentSlot = 0;
+			while(offset < limit){
+				Statstone st = (Statstone)stoneList.get(offset);
+				if(st.minSlot > currentSlot){
+					currentSlot = st.minSlot;
+				}
+				if(currentSlot == slot){
+					return st;
+				}
+				currentSlot++;
+				if(currentSlot > slot){
+					return null;
+				}
+				offset++;
+			}
+			return null;
+		default:throw new IllegalArgumentException();
+		}
+	}
+	public int getSelectedIndex(int path,int slot){
+		Stone st = getSelectedStone(path, slot);
+		return st == null ? -1 : st.order;
 	}
 	public Runestone getKeystone(){
-		return (Runestone)stoneList.get(0);
+		if(stoneList.isEmpty()){
+			return null;
+		}
+		Stone st = stoneList.get(0);
+		if(st instanceof Runestone && ((Runestone)st).slot == 0){
+			return (Runestone)st;
+		}else{
+			return null;
+		}
 	}
 	public JSMap toJSMap(){
 		JSList perkJSList = new JSList(stoneList.size());
 		for(Stone perk : stoneList){
 			perkJSList.add(perk.id);
 		}
-		return new JSMap().put("selectedPerkIds",perkJSList,"primaryStyleId",primaryPath.id,"subStyleId",secondaryPath.id);
+		JSMap map = new JSMap();
+		map.put("selectedPerkIds",perkJSList);
+		if(primaryPath != null){
+			map.put("primaryStyleId",primaryPath.id);
+		}
+		if(secondaryPath != null){
+			map.put("subStyleId",secondaryPath.id);
+		}
+		return map;
 	}
 	@Override
 	public int hashCode() {
 		return stoneList.hashCode();
 	}
+	/**
+	 * Tests if this Rune is equal to the specified object. Two Runes are equal if they have the exact same set of stones
+	 * regardless of primary/secondary paths and the order of statstones.
+	 */
 	@Override
 	public boolean equals(Object that){
 		if(that instanceof Rune){
 			List<Stone> lst = ((Rune)that).stoneList;
 			int len = lst.size();
 			if(len == stoneList.size()){
-				for(int i = 0;i < len;i++){
-					if(stoneList.get(i) != lst.get(i)){
-						return false;
+				int i = 0;
+				while(i < len){
+					Stone st = stoneList.get(i);
+					if(st instanceof Statstone){
+						if(lst.get(i) instanceof Statstone){
+							int shards0 = 0,shards1 = 0;
+							while(i < len){
+								Statstone st0 = (Statstone)stoneList.get(i);
+								Statstone st1 = (Statstone)lst.get(i);
+								shards0 += (1 << (st0.statId*2));
+								shards1 += (1 << (st1.statId*2));
+								i++;
+							}
+							return shards0 == shards1;
+						}
+						return false;//They have a stone that we do not have.
 					}
+					if(lst.get(i) != st && (lst.indexOf(st) < 0)){
+						return false;//We have a stone that they do not have.
+					}
+					i++;
 				}
-				return true;
+				return true;//No statstones
 			}
 		}
 		return false;
@@ -137,7 +326,7 @@ public final class Rune implements Comparator<Stone>{
 					switch(Integer.compare(s1.slot, s2.slot)){
 					case -1:return -1;
 					case 1:return 1;
-					case 0:throw new IllegalArgumentException();//We are bound to find one of these if they exist.
+					case 0:throw new IllegalArgumentException("Slot conflict!");//We are bound to find one of these if they exist.
 					}
 				}else{
 					return s1.path == primaryPath ? -1 : 1;
@@ -147,7 +336,21 @@ public final class Rune implements Comparator<Stone>{
 		}else if(o2 instanceof Runestone){
 			return 1;
 		}else{
-			return Integer.compare(((Statstone)o1).sortingAssist, ((Statstone)o2).sortingAssist);
+			Statstone s1 = (Statstone)o1;
+			Statstone s2 = (Statstone)o2;
+			if(s1.minSlot < s2.minSlot){
+				return -1;
+			}
+			if(s1.minSlot > s2.minSlot){
+				return 1;
+			}
+			if(s1.maxSlot < s2.maxSlot){
+				return -1;
+			}
+			if(s1.maxSlot > s2.maxSlot){
+				return 1;
+			}
 		}
+		return 0;
 	}
 }

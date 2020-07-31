@@ -2,6 +2,7 @@ package net.balintgergely.runebook;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Graphics;
@@ -12,13 +13,14 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.Writer;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 
 import javax.swing.ImageIcon;
@@ -34,6 +36,7 @@ import javax.swing.UIManager;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ListSelectionEvent;
 
+import net.balintgergely.runebook.RuneModel.Path;
 import net.balintgergely.runebook.RuneModel.Stone;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
@@ -43,10 +46,12 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final Executor EVENT_QUEUE = EventQueue::invokeLater;
+	private static final String GITHUB = "https://github.com/BalintGergely/bookofthresholds";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){}//Eat
+		
 		HttpClient client;
 		DataDragon dragon;
 		AssetManager assets;
@@ -71,7 +76,7 @@ public class BookOfThresholds extends JFrame{
 		{
 			ClientManager clm;
 			try{
-				clm = new ClientManager(client);
+				clm = new ClientManager(assets,client);
 			}catch(Throwable th){
 				clm = null;
 				JOptionPane.showMessageDialog(null, th.getMessage()+"\r\nRune Book of Thresholds will not be able to export runes.");
@@ -92,11 +97,14 @@ public class BookOfThresholds extends JFrame{
 							byte roles = bld.peekByte("roles");
 							JSList perks = bld.getJSList("selectedPerkIds");
 							ArrayList<Stone> stoneList = new ArrayList<>();
+							Path primaryPath = (Path)assets.runeModel.fullMap.get(bld.peekInt("primaryStyleId"));
+							Path secondaryPath = (Path)assets.runeModel.fullMap.get(bld.peekInt("subStyleId"));
 							int len = perks.size();
 							for(int i = 0;i < len;i++){
 								stoneList.add(assets.runeModel.fullMap.get(perks.getInt(i)));
 							}
-							buildList.add(new Build(name, champion, new Rune(stoneList), roles));
+							buildList.add(new Build(name, champion, new Rune(assets.runeModel,primaryPath,secondaryPath,stoneList), roles,
+									bld.peekLong("timestamp")));
 						}catch(Throwable t){
 							t.printStackTrace();
 						}
@@ -119,29 +127,31 @@ public class BookOfThresholds extends JFrame{
 		System.out.println("Done. Book, meet new friend!");
 		long nextSaveTime = 0;
 		while(true){
-			synchronized(runeBook.buildList){
+			synchronized(runeBook.buildListModel){
 				while(!(runeBook.buildListChanged || runeBook.shutdownInitiated)){
-					runeBook.buildList.wait();
+					runeBook.buildListModel.wait();
 				}
 			}
 			if(runeBook.buildListChanged){
 				long currentTime = System.currentTimeMillis();
 				if(currentTime < nextSaveTime && !runeBook.shutdownInitiated){
-					synchronized(runeBook.buildList){
+					synchronized(runeBook.buildListModel){
 						while((currentTime = System.currentTimeMillis()) < nextSaveTime && !runeBook.shutdownInitiated){
-							runeBook.buildList.wait(nextSaveTime-currentTime);
+							runeBook.buildListModel.wait(nextSaveTime-currentTime);
 						}
 					}
 				}
 				if(!SAVE_FILE.exists()){
 					SAVE_FILE.createNewFile();
 				}
-				JSList buildList = new JSList(runeBook.buildList.size());
+				List<Build> bls = runeBook.buildListModel.publicList;
+				JSList buildList = new JSList(bls.size());
 				runeBook.buildListChanged = false;
-				for(Build build : runeBook.buildList){
+				for(Build build : bls){
 					JSMap mp = build.getRune().toJSMap().put(
 							"name",build.getName(),
-							"roles",build.getRoles());
+							"roles",build.getRoles(),
+							"timestamp",build.timestamp);
 					Champion ch = build.getChampion();
 					if(ch != null){
 						mp.put("champion",ch.id);
@@ -166,18 +176,16 @@ public class BookOfThresholds extends JFrame{
 	private ClientManager clientManager;
 	private JTextField nameField;
 	private JButton saveButton,eraseButton,completeButton,exportButton;
-	private OpenListModel<Build> buildListModel;
-	private CopyOnWriteArrayList<Build> buildList;
+	private BuildListModel buildListModel;
 	private Build currentBuild;
 	private LargeBuildPanel buildPanel;
 	private Rune currentRune;
 	private BookOfThresholds(AssetManager assets,ClientManager client,ArrayList<Build> builds){
-		super("The Rune Book of Thresholds");
+		super(assets.z.getString("window"));
 		super.setIconImage(assets.windowIcon);
 		this.assetManager = assets;
 		this.clientManager = client;
-		this.buildListModel = new OpenListModel<>(builds);
-		this.buildList = new CopyOnWriteArrayList<>(builds);
+		this.buildListModel = new BuildListModel(builds);
 		JPanel mainPanel = new JPanel(new BorderLayout()) {
 			private static final long serialVersionUID = 1L;
 			@Override
@@ -229,23 +237,31 @@ public class BookOfThresholds extends JFrame{
 			mainPanel.add(sidePanel,BorderLayout.LINE_START);
 			buildPanel = new LargeBuildPanel(assets);
 			buildPanel.model.addChangeListener(this::stateChanged);
+			currentRune = buildPanel.getRune();
 			sidePanel.add(buildPanel,BorderLayout.CENTER);
 			JToolBar buildOptionsToolBar = new JToolBar();
 			buildOptionsToolBar.setFloatable(false);
+			buildOptionsToolBar.setOpaque(false);
+			buildOptionsToolBar.setBorder(null);
 			sidePanel.add(buildOptionsToolBar,BorderLayout.PAGE_START);
 			{
-				JButton aboutButton = new JButton("About");
-				aboutButton.setActionCommand("ABOUT");
-				aboutButton.addActionListener(this::actionPerformed);
-				buildOptionsToolBar.add(aboutButton);
 				buildOptionsToolBar.add(exportButton = toolButton(3,4,"EXPORT",
-						client == null ? "Currently unable to export runes." : "Export configuration to League of Legends",
-						false));
+						assets.z.getString(client == null ? "exportCant" : "exportCan"),
+						false,true));
 				exportButton.setVisible(false);
-				buildOptionsToolBar.add(completeButton = toolButton(2,4,"FIX","Autocomplete configuration",true));
+				buildOptionsToolBar.add(completeButton = toolButton(2,4,"FIX",assets.z.getString("fix"),true,true));
 				buildOptionsToolBar.add(nameField = new JTextField(16));
-				buildOptionsToolBar.add(eraseButton = toolButton(1,4,"ERASE","Erase current configuration",false));
-				buildOptionsToolBar.add(saveButton = toolButton(0,4,"SAVE","Save current configuration",false));
+				buildOptionsToolBar.add(eraseButton = toolButton(1,4,"ERASE",assets.z.getString("erase"),false,false));
+				buildOptionsToolBar.add(saveButton = toolButton(0,4,"SAVE",assets.z.getString("save"),true,false));
+			}
+			{
+				JButton aboutButton = new JButton("<html>"+assets.z.getString("aboutLine0")+"<br>"
+						+ assets.z.getString("aboutLine1")+" "+GITHUB+"</html>");
+				aboutButton.setActionCommand("ABOUT");
+				aboutButton.setOpaque(false);
+				aboutButton.addActionListener(this::actionPerformed);
+				sidePanel.add(aboutButton,BorderLayout.PAGE_END);
+				//TODO Add mobafire rune link import/export via the Mobafire class.
 			}
 		}
 		super.pack();
@@ -262,13 +278,14 @@ public class BookOfThresholds extends JFrame{
 		super.processWindowEvent(e);
 		if (e.getID() == WindowEvent.WINDOW_CLOSING) {
 			shutdownInitiated = true;
-			synchronized(buildList){
-				buildList.notifyAll();
+			synchronized(buildListModel){
+				buildListModel.notifyAll();
 			}
 		}
 	}
-	private JButton toolButton(int imgx,int imgy,String action,String toolTip,boolean enabled){
+	private JButton toolButton(int imgx,int imgy,String action,String toolTip,boolean enabled,boolean opaque){
 		JButton button = new JButton(new ImageIcon(assetManager.iconSprites.getSubimage(imgx*24, imgy*24, 24, 24)));
+		button.setOpaque(opaque);
 		button.setEnabled(enabled);
 		button.setToolTipText(toolTip);
 		button.setActionCommand(action);
@@ -292,9 +309,8 @@ public class BookOfThresholds extends JFrame{
 		eraseButton.setEnabled(selectedElement != null);
 	}
 	private void stateChanged(ChangeEvent e){
-		currentRune = buildPanel.getRune(false);
-		boolean runeComplete = currentRune != null;
-		saveButton.setEnabled(runeComplete);
+		currentRune = buildPanel.getRune();
+		boolean runeComplete = currentRune.isComplete;
 		exportButton.setEnabled(clientManager != null && runeComplete);
 		exportButton.setVisible(runeComplete);
 		completeButton.setVisible(!runeComplete);
@@ -302,27 +318,18 @@ public class BookOfThresholds extends JFrame{
 	private void actionPerformed(ActionEvent e){
 		switch(e.getActionCommand()){
 		case "FIX":
-			currentRune = buildPanel.model.getRune(true);
+			if(!currentRune.isComplete){
+				buildPanel.setRune(currentRune = currentRune.fix());
+			}
 			break;
 		case "ERASE":{
-				Build build = buildListModel.getSelectedElement();
-				if(build != null){
-					int index = buildListModel.getMinSelectionIndex();
-					buildListModel.clearSelection();
-					buildListModel.list.remove(build);
-					buildListModel.fireIntervalRemoved(index, index);
-					buildList.remove(build);
-					buildListChanged = true;
-					synchronized(buildList){
-						buildList.notifyAll();
-					}
+				buildListModel.removeSelectedBuild();
+				buildListChanged = true;
+				synchronized(buildListModel){
+					buildListModel.notifyAll();
 				}
 			}break;
 		case "SAVE":{
-				Rune rune = buildPanel.getRune(false);
-				if(rune == null){
-					return;
-				}
 				String name = nameField.getText();
 				Champion champion = buildPanel.getChampion();
 				byte roles = buildPanel.getSelectedRoles();
@@ -331,7 +338,7 @@ public class BookOfThresholds extends JFrame{
 						(champion != build.getChampion()//Champion changed.
 								||(
 										!(Objects.equals(name, build.getName()) && roles == build.getRoles()) &&//Either name or roles changed
-										!build.getRune().equals(rune)//Rune changed
+										!build.getRune().equals(currentRune)//Rune changed
 								)
 						)
 				){
@@ -345,39 +352,39 @@ public class BookOfThresholds extends JFrame{
 					build = null;
 				}
 				if(build == null){
-					currentBuild = build = new Build(name, champion, rune, roles);
-					buildList.add(build);
-					int bindex = buildListModel.list.size();
-					buildListModel.list.add(build);
-					buildListModel.fireIntervalAdded(bindex, bindex);
-					buildListModel.addSelectionInterval(bindex, bindex);
+					currentBuild = build = new Build(name, champion, currentRune, roles, System.currentTimeMillis());
+					buildListModel.insertBuild(build);
 				}else{
-					buildListModel.beforeListChange();
 					build.setChampion(champion);
 					build.setName(name);
 					build.setRoles(roles);
-					build.setRune(rune);
-					int index = buildListModel.getMinSelectionIndex();
-					buildListModel.fireContentsChanged(index, index);
-					buildListModel.afterListChange();
+					build.setRune(currentRune);
+					build.timestamp = System.currentTimeMillis();
+					buildListModel.buildChanged(build);
 				}
 				buildListChanged = true;
-				synchronized(buildList){
-					buildList.notifyAll();
+				synchronized(buildListModel){
+					buildListModel.notifyAll();
 				}
 			}break;
 		case "EXPORT":
-			if(currentRune != null){
+			if(currentRune.isComplete){
+				if(currentBuild != null){
+					currentBuild.timestamp = System.currentTimeMillis();
+				}
 				clientManager.exportRune(currentRune, nameField.getText()).thenAcceptAsync(
 						(String str) -> {
 						if(str != null){
-							JOptionPane.showMessageDialog(this, str);
+							JOptionPane.showMessageDialog(this, str, assetManager.z.getString("message"), JOptionPane.ERROR_MESSAGE);
 						}
 						}, EVENT_QUEUE);
 			}break;
 		case "ABOUT":
-			JOptionPane.showMessageDialog(null, "Rune Book for League of Legends by Bálint János Gergely.\r\n"
-					+ "Get updates at: github.com/BalintGergely/bookofthresholds");
+			try{
+				Desktop.getDesktop().browse(new URI(GITHUB));
+			}catch(Exception e1){
+				e1.printStackTrace();
+			}
 		}
 	}
 }

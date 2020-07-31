@@ -5,9 +5,7 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
-//import java.awt.Graphics2D;
 import java.awt.Insets;
-//import java.awt.RenderingHints;
 import java.awt.geom.Ellipse2D;
 
 import javax.swing.JList;
@@ -19,7 +17,6 @@ import javax.swing.border.LineBorder;
 import net.balintgergely.runebook.RuneModel.Path;
 import net.balintgergely.runebook.RuneModel.Runestone;
 import net.balintgergely.runebook.RuneModel.Statstone;
-import net.balintgergely.runebook.RuneModel.Stone;
 
 public class BuildRenderer extends JPanel implements ListCellRenderer<Build>{
 	@SuppressWarnings("hiding")
@@ -53,9 +50,6 @@ public class BuildRenderer extends JPanel implements ListCellRenderer<Build>{
 		byte roles = build.getRoles();
 		super.getInsets(insets);
 		int x = insets.left,y = insets.top;
-		//((Graphics2D)gr).setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-		//gr.setColor(Color.DARK_GRAY);
-		//gr.fillRect(x, y, WIDTH, HEIGHT);
 		{
 			FontMetrics metrics = gr.getFontMetrics();
 			int width = metrics.stringWidth(name);
@@ -76,49 +70,58 @@ public class BuildRenderer extends JPanel implements ListCellRenderer<Build>{
 		if(rune != null){
 			gr.setColor(GLASS_PANE_COLOR);
 			gr.fillOval(x+48, y+24, 24, 24);
-			gr.drawImage(rune.stoneList.get(0).getImage(), x, y, 48, 48, null);
-			gr.drawImage(rune.secondaryPath.getImage(), x+48, y+24, 24, 24, null);
+			Runestone keystone = rune.getKeystone();
+			if(keystone == null){
+				if(rune.primaryPath != null){
+					gr.fillOval(x+12, y+24, 24, 24);
+					gr.drawImage(rune.primaryPath.getImage(), x+12, y+24, 24, 24, null);
+				}
+			}else{
+				gr.drawImage(keystone.getImage(), x, y, 48, 48, null);
+			}
+			if(rune.secondaryPath != null){
+				gr.drawImage(rune.secondaryPath.getImage(), x+48, y+24, 24, 24, null);
+			}
 			x += 24;
 			y += 50;
 			Path path = rune.primaryPath;
-			RuneModel model = path.model;
-			int statStoneOffset = rune.statStoneOffset();
+			RuneModel model = rune.model;
 			for(int p = 0;p < 3;p++){
-				int slots;
 				gr.setColor(GLASS_PANE_COLOR);
 				gr.fillRoundRect(x-17, y-2, 33, 28, 8, 8);
-				switch(p){
-				case 0:
-				case 1:	gr.setColor(path.color);
-						slots = path.getSlotCount()-1;break;
-				default:gr.setColor(STAT_MOD_BORDER);
-					path = null;
-					slots = model.getStatSlotCount();
+				if(p == 2){
+					int slots = model.getStatSlotCount();
+					for(int i = 0;i < slots;i++){
+						Statstone stone = (Statstone)rune.getSelectedStone(2, i);
+						int stones = model.getStatSlotLength(i);
+						int offset = -stones*4;
+						int searchFor = stone == null ? -1 : stone.order;
+						for(int k = 0;k < stones;k++){
+							gr.setColor(k == searchFor ? stone.color : Color.DARK_GRAY);
+							gr.fillOval(offset+x+k*8, y, 7, 7);
+						}
+						y += 8;
+					}
+					y -= slots*8;
+					gr.setColor(STAT_MOD_BORDER);
+				}else if(path != null){
+					int slots = path.getSlotCount();
+					for(int i = 1;i < slots;i++){
+						int stones = path.getStoneCountInSlot(i);
+						int offset = -stones*4;
+						int searchFor = rune.getSelectedIndex(p, i);
+						for(int k = 0;k < stones;k++){
+							gr.setColor(k == searchFor ? path.color : Color.DARK_GRAY);
+							gr.fillOval(offset+x+k*8, y, 7, 7);
+						}
+						y += 8;
+					}
+					y -= (slots-1)*8;
+					gr.setColor(path.color);
 				}
 				gr.drawRoundRect(x-17, y-2, 33, 28, 10, 10);
-				for(int i = 0;i < slots;i++){
-					int stones = p == 2 ? model.getStatSlotLength(i) : path.getStoneCountInSlot(i+1);
-					int offset = -stones*4;
-					Stone st;
-					switch(p){
-					case 0:st = rune.stoneList.get(1+i);break;
-					case 2:st = rune.stoneList.get(statStoneOffset+i);break;
-					default:st = null;
-					}
-					for(int k = 0;k < stones;k++){
-						switch(p){
-						case 0:gr.setColor(((Runestone)st).index == k ? path.color : Color.DARK_GRAY);break;
-						case 1:gr.setColor(rune.stoneList.contains(path.getStone(i+1, k)) ? path.color : Color.DARK_GRAY);break;
-						case 2:gr.setColor(model.getStatstone(i, k) == st ? ((Statstone)st).color : Color.DARK_GRAY);break;
-						}
-						gr.fillOval(offset+x+k*8, y, 7, 7);
-					}
-					y += 8;
-				}
 				path = rune.secondaryPath;
-				slots = path.getSlotCount();
 				x += 36;
-				y -= (slots-1)*8;
 			}
 		}
 	}

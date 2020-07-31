@@ -13,8 +13,6 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
 import net.balintgergely.runebook.RuneModel.Path;
-import net.balintgergely.runebook.RuneModel.Runestone;
-import net.balintgergely.runebook.RuneModel.Statstone;
 import net.balintgergely.runebook.RuneModel.Stone;
 /**
  * Implements the button model logic used for the runes.
@@ -101,140 +99,91 @@ public class RuneButtonGroup{
 		statModElements = new StatModButtonModel[statSlotCount];
 	}
 	public void setRune(Rune rune){
-		if(rune.secondaryPath.model != runeModel){
-			throw new IllegalArgumentException();//Model has to match
+		if(rune.model != runeModel){
+			throw new IllegalArgumentException();
 		}
-		primaryPathModels.get(rune.primaryPath.order).setSelected(true);
-		secondaryPathModels.get(rune.secondaryPath.order).setSelected(true);
-		keystoneModels.get(rune.getKeystone().index).setSelected(true);
-		int slotCount = rune.primaryPath.getSlotCount();
-		for(int i = 1;i < slotCount;i++){
-			primarySlotModels.get(i-1).get(((Runestone)rune.stoneList.get(i)).index).setSelected(true);
+		if(secondaryPath != null){
+			secondaryPath.deselect();
+			pathChanged(false);
 		}
-		if(secondA != null){
-			secondA.deselect();
+		if(rune.primaryPath == null && primaryPath != null){
+			primaryPath.deselect();
+			pathChanged(true);
 		}
-		if(secondB != null){
-			secondB.deselect();
+		if(rune.primaryPath != null){
+			primaryPathModels.get(rune.primaryPath.order).setSelected(true);
 		}
-		for(int i = 0;i < 2;i++){
-			Runestone stone = (Runestone)rune.stoneList.get(slotCount+i);
-			secondarySlotModels.get(stone.slot-1).get(stone.index).setSelected(true);
+		if(rune.secondaryPath != null){
+			secondaryPathModels.get(rune.secondaryPath.order).setSelected(true);
 		}
-		slotCount = runeModel.getStatSlotCount();
-		int offset = rune.statStoneOffset();
-		for(int i = 0;i < slotCount;i++){
-			statSlotModels.get(i).get(((Statstone)rune.stoneList.get(offset+i)).indexOfInSlot(i)).setSelected(true);
-		}
-	}
-	boolean autoCompleteInProgress;
-	public Rune getRune(boolean autoComplete){
-		boolean autoCompleteUsed = false;
-		if(primaryPath == null){
-			if(autoComplete){
-				autoCompleteUsed = true;
-				autoCompleteInProgress = true;
-			}else return null;
-			for(RuneButtonModel mx : primaryPathModels){
-				if(((PathButtonModel)mx).alt != secondaryPath && mx.isEnabled()){
-					mx.setSelected(true);
-					break;
-				}
-			}
-		}
-		if(secondaryPath == null){
-			if(autoComplete){
-				autoCompleteUsed = true;
-				autoCompleteInProgress = true;
-			}else return null;
-			for(RuneButtonModel mx : secondaryPathModels){
-				if(mx.isEnabled()){
-					mx.setSelected(true);
-					break;
-				}
-			}
-		}
-		Path path = primaryPath.path;
-		int slots = path.getSlotCount();
-		ArrayList<Stone> stoneList = new ArrayList<>(9);
+		int slots = primaryPathElements.length;
 		for(int i = 0;i < slots;i++){
-			PrimarySlotButtonModel md = primaryPathElements[i];
-			int stoneIndex = 0;
-			if(md == null){
-				if(autoComplete){
-					autoCompleteUsed = true;
-					autoCompleteInProgress = true;
-				}else return null;
-				b: for(RuneButtonModel mx : i == 0 ? keystoneModels : primarySlotModels.get(i-1)){
-					if(mx.isEnabled()){
-						mx.setSelected(true);
-						stoneIndex = ((PrimarySlotButtonModel)mx).index;
-						break b;
-					}
+			int index = rune.getSelectedIndex(0, i);
+			if(index < 0){
+				if(primaryPathElements[i] != null){
+					primaryPathElements[i].deselect();
 				}
 			}else{
-				stoneIndex = md.index;
-			}
-			stoneList.add(path.getStone(i, stoneIndex));
-		}
-		path = secondaryPath.path;
-		if(secondA == null || secondB == null){
-			if(autoComplete){
-				autoCompleteUsed = true;
-				autoCompleteInProgress = true;
-			}else return null;
-			int dsts = -5;
-			slots = path.getSlotCount();
-			if(secondA != null){
-				dsts = secondA.slot;
-			}else if(secondB != null){
-				dsts = secondB.slot;
-			}
-			do{
-				b: for(int i = 1;i < slots;i++){
-					if(i != dsts){
-						for(RuneButtonModel mx : secondarySlotModels.get(i-1)){
-							if(mx.isEnabled()){
-								mx.setSelected(true);
-								dsts = i;
-								break b;
-							}
-						}
-					}
+				if(i == 0){
+					keystoneModels.get(index).setSelected(true);
+				}else{
+					primarySlotModels.get(i-1).get(index).setSelected(true);
 				}
-			}while(secondA == null || secondB == null);
+			}
 		}
-		stoneList.add(path.getStone(secondA.slot, secondA.index));
-		stoneList.add(path.getStone(secondB.slot, secondB.index));
+		for(int i = 1;i < slots;i++){
+			int index = rune.getSelectedIndex(1, i);
+			if(index >= 0){
+				secondarySlotModels.get(i-1).get(index).setSelected(true);
+			}
+		}
 		slots = runeModel.getStatSlotCount();
 		for(int i = 0;i < slots;i++){
-			StatModButtonModel md = statModElements[i];
-			int mdIndex = 0;
-			if(md == null){
-				if(autoComplete){
-					autoCompleteUsed = true;
-					autoCompleteInProgress = true;
-				}else return null;
-				for(RuneButtonModel mx : statSlotModels.get(i)){
-					mx.setSelected(true);
-					mdIndex = ((StatModButtonModel)mx).index;
-					break;
+			int index = rune.getSelectedIndex(2, i);
+			if(index < 0){
+				if(statModElements[i] != null){
+					statModElements[i].deselect();
 				}
 			}else{
-				mdIndex = md.index;
+				statSlotModels.get(i).get(index).setSelected(true);
 			}
-			stoneList.add(runeModel.getStatstone(i,mdIndex));
 		}
-		if(autoCompleteUsed){
-			autoCompleteInProgress = false;
-			for(ChangeListener ls : listenerList){
-				if(che == null){
-					che = new ChangeEvent(this);
+	}
+	public Rune getRune(){
+		ArrayList<Stone> stoneList = new ArrayList<>(9);
+		Path primary;
+		if(primaryPath == null){
+			primary = null;
+		}else{
+			primary = primaryPath.path;
+			int slots = primary.getSlotCount();
+			for(int i = 0;i < slots;i++){
+				PrimarySlotButtonModel md = primaryPathElements[i];
+				if(md != null){
+					stoneList.add(primary.getStone(i, md.index));
 				}
-				ls.stateChanged(che);
 			}
 		}
-		return new Rune(stoneList);
+		Path secondary;
+		if(secondaryPath == null){
+			secondary = null;
+		}else{
+			secondary = secondaryPath.path;
+			if(secondA != null){
+				stoneList.add(secondary.getStone(secondA.slot, secondA.index));
+			}
+			if(secondB != null){
+				stoneList.add(secondary.getStone(secondB.slot, secondB.index));
+			}
+		}
+		int slots = runeModel.getStatSlotCount();
+		for(int i = 0;i < slots;i++){
+			StatModButtonModel md = statModElements[i];
+			if(md != null){
+				stoneList.add(runeModel.getStatstone(i,md.index));
+			}
+		}
+		return new Rune(runeModel,primary,secondary,stoneList);
 	}
 	public void addChangeListener(ChangeListener ls){
 		listenerList.add(ls);
@@ -244,13 +193,11 @@ public class RuneButtonGroup{
 	}
 	private ChangeEvent che;
 	private void fireGlobalStateChanged(){
-		if(!autoCompleteInProgress){
-			for(ChangeListener ls : listenerList){
-				if(che == null){
-					che = new ChangeEvent(this);
-				}
-				ls.stateChanged(che);
+		for(ChangeListener ls : listenerList){
+			if(che == null){
+				che = new ChangeEvent(this);
 			}
+			ls.stateChanged(che);
 		}
 	}
 	private void pathChanged(boolean isPrimary){
@@ -328,7 +275,7 @@ public class RuneButtonGroup{
 		}
 		@Override
 		public boolean isEnabled() {
-			return forPrimaryPath || (primaryPath != null && primaryPath != alt);
+			return forPrimaryPath || (primaryPath != null && primaryPath != alt) || secondaryPath != null;
 		}
 		private void deselect(){
 			if(forPrimaryPath){
@@ -367,7 +314,7 @@ public class RuneButtonGroup{
 						}
 					}
 				}else{
-					if(primaryPath != null && primaryPath != alt && secondaryPath != this){
+					if(primaryPath != alt && secondaryPath != this){
 						if(secondaryPath != null){
 							secondaryPath.deselect();
 						}
