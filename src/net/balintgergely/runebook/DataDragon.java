@@ -54,7 +54,7 @@ public class DataDragon {
 					if(name.endsWith(".png")){
 						object = ImageIO.read(input);
 					}else if(name.endsWith(".json")){
-						object = JSON.freeze(JSON.readObject(new InputStreamReader(input)));
+						object = JSON.freeze(JSON.readObject(new InputStreamReader(input,StandardCharsets.UTF_8)));
 					}
 					if(object != null){
 						cache.put(name, object);
