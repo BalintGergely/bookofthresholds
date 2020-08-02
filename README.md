@@ -12,6 +12,12 @@ Planned features:<br>
 -Accessing custom and default runes stored in the game client.<br>
 -Automatically filter for the selected champion and draft role.<br>
 
+Download the latest release:
+https://github.com/BalintGergely/bookofthresholds/raw/master/RuneBook.jar
+
+Github repository:
+https://github.com/BalintGergely/bookofthresholds
+
 Yes...<br>
 ...I made this because I just could not find an application that helps me keep track of runes in League of Legends. Trust me I googled it.<br>
 ...I like to experiment with new builds, but I also like to keep track of some of them. 3 pages is not enough.<br>
