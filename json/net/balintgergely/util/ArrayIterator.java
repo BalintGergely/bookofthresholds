@@ -7,45 +7,45 @@ import java.util.function.Consumer;
 
 public class ArrayIterator<E> implements ListIterator<E>,Spliterator<E>{
 	E[] array; 
-	private int index,limit;
+	int minIndex,index,maxIndex;
 	public ArrayIterator(E[] array0){
 		array = array0;
-		limit = array0.length;
 	}
-	public ArrayIterator(E[] array0,int fromIndex,int toIndex) {
+	public ArrayIterator(E[] array0,int fromIndex,int index,int toIndex) {
 		array = array0;
 		index = fromIndex;
-		limit = Math.min(array.length, toIndex);
+		minIndex = fromIndex;
+		maxIndex = toIndex;
 	}
 	@Override
 	public boolean hasNext() {
-		return index < limit;
+		return index < maxIndex;
 	}
 	@Override
 	public E next() {
-		if(index >= limit){
+		if(index >= maxIndex){
 			throw new NoSuchElementException();
 		}
 		return array[index++];
 	}
 	@Override
 	public boolean hasPrevious() {
-		return index > 0;
+		return index > minIndex;
 	}
 	@Override
 	public E previous() {
-		if(index <= 0){
+		if(index <= minIndex){
 			throw new NoSuchElementException();
 		}
 		return array[--index];
 	}
 	@Override
 	public int nextIndex() {
-		return index;
+		return index-minIndex;
 	}
 	@Override
 	public int previousIndex() {
-		return index-1;
+		return index-1-minIndex;
 	}
 	@Override
 	public void remove() {
@@ -61,25 +61,25 @@ public class ArrayIterator<E> implements ListIterator<E>,Spliterator<E>{
 	}
 	@Override
 	public boolean tryAdvance(Consumer<? super E> action) {
-		if(index < limit){
-			action.accept(array[index++]);
+		if(hasNext()){
+			action.accept(next());
 			return true;
 		}
 		return false;
 	}
 	@Override
-	public Spliterator<E> trySplit() {
+	public ArrayIterator<E> trySplit() {
 		int start = index;
-		int middle = start+(limit-start)/2;
+		int middle = start+(maxIndex-start)/2;
 		if(middle != start){
 			index = middle;
-			return new ArrayIterator<>(array, start, middle);
+			return new ArrayIterator<>(array, minIndex, start, middle);
 		}
 		return null;
 	}
 	@Override
 	public long estimateSize() {
-		return limit-index;
+		return maxIndex-index;
 	}
 	@Override
 	public int characteristics() {
@@ -88,8 +88,12 @@ public class ArrayIterator<E> implements ListIterator<E>,Spliterator<E>{
 	}
 	@Override
 	public void forEachRemaining(Consumer<? super E> action) {
-		while(index < limit){
-			action.accept(array[index++]);
+		while(hasNext()){
+			action.accept(next());
 		}
+	}
+	@Override
+	public long getExactSizeIfKnown() {
+		return estimateSize();
 	}
 }

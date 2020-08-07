@@ -4,23 +4,17 @@ import static net.balintgergely.util.JSON.*;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
-
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
-import java.util.function.Function;
-
-import net.balintgergely.util.JSList.ImmutableSet;
 /**
  * @author Bálint János Gergely
  */
 public final class JSMap{
+	public static final JSMap EMPTY_MAP = new JSMap(Map.of());
 	public final Map<String,Object> map;
 	public JSMap() {
 		map = new HashMap<String, Object>();
@@ -219,153 +213,5 @@ public final class JSMap{
 	}
 	public JSList peekJSList(Object key){
 		return asJSList(map.get(key), false);
-	}
-	public static class ImmutableMap<K,V> extends AbstractMap<K,V>{
-		private ImmutableSet<Map.Entry<K,V>> entries;
-		ImmutableMap(ImmutableSet<Map.Entry<K, V>> ent){
-			entries = ent;
-		}
-		@Override
-		public void clear() {
-			throw new UnsupportedOperationException();
-		}
-		@Override
-		public void forEach(BiConsumer<? super K, ? super V> action) {
-			for(Entry<K,V> e : entries.data){
-				action.accept(e.getKey(), e.getValue());
-			}
-		}
-		@Override
-		public void replaceAll(BiFunction<? super K, ? super V, ? extends V> function) {
-			clear();
-		}
-		@Override
-		public V putIfAbsent(K key, V value) {
-			clear();
-			return null;
-		}
-		@Override
-		public boolean remove(Object key, Object value) {
-			clear();
-			return false;
-		}
-		@Override
-		public boolean replace(K key, V oldValue, V newValue) {
-			clear();
-			return false;
-		}
-		@Override
-		public V replace(K key, V value) {
-			clear();
-			return null;
-		}
-		@Override
-		public V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction) {
-			clear();
-			return null;
-		}
-		@Override
-		public V computeIfPresent(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
-			clear();
-			return null;
-		}
-		@Override
-		public V compute(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
-			clear();
-			return null;
-		}
-		@Override
-		public V merge(K key, V value, BiFunction<? super V, ? super V, ? extends V> remappingFunction) {
-			clear();
-			return null;
-		}
-		@Override
-		public int size() {
-			return entries.size();
-		}
-		@Override
-		public boolean isEmpty() {
-			return false;
-		}
-		@Override
-		public boolean containsValue(Object value) {
-			for(Map.Entry<K,V> e : entries.data){
-				if(value == null ? e.getValue() == null : value.equals(e.getValue())){
-					return true;
-				}
-			}
-			return false;
-		}
-		@Override
-		public boolean containsKey(Object key) {
-			for(Map.Entry<K,V> e : entries.data){
-				if(key == null ? e.getKey() == null : key.equals(e.getKey())){
-					return true;
-				}
-			}
-			return false;
-		}
-		@Override
-		public V get(Object key) {
-			for(Map.Entry<K,V> e : entries.data){
-				if(key == null ? e.getKey() == null : key.equals(e.getKey())){
-					return e.getValue();
-				}
-			}
-			return null;
-		}
-		@Override
-		public V put(K key, V value) {
-			clear();
-			return null;
-		}
-		@Override
-		public V remove(Object key) {
-			clear();
-			return null;
-		}
-		@Override
-		public void putAll(Map<? extends K, ? extends V> m) {
-			clear();
-		}
-		@Override
-		public int hashCode() {
-			return entries.hashCode();
-		}
-		private Entry<K,V> getEntry(Object k){
-			if(k != null){
-				for(Map.Entry<K,V> e : entries.data){
-					if(k.equals(e.getKey())){
-						return e;
-					}
-				}
-			}
-			return null;
-		}
-		@Override
-		public ImmutableSet<Map.Entry<K, V>> entrySet() {
-			return entries;
-		}
-		@Override
-		public boolean equals(Object o) {
-			if(this == o){
-				return true;
-			}
-			if(o instanceof ImmutableMap){
-				ImmutableMap<?,?> map = (ImmutableMap<?,?>)o;
-				if(map.size() != entries.size()){
-					return false;
-				}
-				for(Map.Entry<K,V> e : entries.data){
-					Entry<?,?> other = map.getEntry(e.getKey());
-					V v = e.getValue();
-					if(other == null || (v == null ? other.getValue() != null : !v.equals(other.getValue()))){
-						return false;
-					}
-				}
-				return true;
-			}
-			return false;
-		}
 	}
 }

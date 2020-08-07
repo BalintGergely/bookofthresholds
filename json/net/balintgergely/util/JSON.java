@@ -14,6 +14,7 @@ import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -30,16 +31,13 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-import net.balintgergely.util.JSMap.ImmutableMap;
-import net.balintgergely.util.JSList.ImmutableList;
-import net.balintgergely.util.JSList.ImmutableSet;
-
 public final class JSON {
 	public static void main(String[] atgs){
 		System.out.println(Map.entry("JS", "ON").getClass() == immMapEntry);
 		System.out.println("JSON");
 	}
 	public static final Class<?> immMapEntry;
+	public static final Comparator<Map.Entry<String,Object>> entryComparator = (a,b) -> a.getKey().compareTo(b.getKey());
 	static {
 		Class<?> m = null;
 		try{
@@ -628,6 +626,26 @@ public final class JSON {
 		}
 		return null;
 	}
+	@SuppressWarnings("unchecked")
+	public static JSMap toJSMap(Object obj){
+		if(obj instanceof JSMap){
+			return (JSMap) obj;
+		}
+		if(obj instanceof Map){
+			return new JSMap((Map<String,Object>)obj);
+		}
+		return JSMap.EMPTY_MAP;
+	}
+	@SuppressWarnings("unchecked")
+	public static JSList toJSList(Object obj){
+		if(obj instanceof JSList){
+			return (JSList) obj;
+		}
+		if(obj instanceof List){
+			return new JSList((List<Object>)obj);
+		}
+		return JSList.EMPTY_LIST;
+	}
 	/**
 	 * Parses a number from a string.
 	 * @return Can return an instance of the following types:
@@ -757,40 +775,55 @@ public final class JSON {
 	}
 	@SuppressWarnings("unchecked")
 	public static Map<String,Object> freezeMap(Map<?,?> map){
-		if(map instanceof ImmutableMap){
+		if(map instanceof Immutable){
 			return (Map<String,Object>)map;
 		}
 		if(map.isEmpty()){
 			return Map.of();
 		}
-		Map.Entry<?,?>[] target = new Map.Entry<?, ?>[map.size()];
-		int index = 0;
+		Map.Entry<String,Object>[] target = (Map.Entry<String,Object>[])new Map.Entry<?, ?>[map.size()];
+		int length = 0;
 		for(Map.Entry<?, ?> entry : map.entrySet()){
 			Object k = entry.getKey();
 			String sk = k == null ? null : (k instanceof String ? (String)k : k.toString());
 			if(sk != null){
-				if(target.length == index){
-					target = Arrays.copyOf(target, index+1);
+				if(target.length == length){
+					target = Arrays.copyOf(target, length+1);
 				}
 				Object v = entry.getValue();
 				Object vf = freeze(v);
 				if(k == sk && v == vf && (entry instanceof AbstractMap.SimpleImmutableEntry || immMapEntry.isInstance(entry))){
-					target[index++] = entry;
+					target[length++] = (Map.Entry<String, Object>)entry;
 				}else{
-					target[index++] = new AbstractMap.SimpleImmutableEntry<>(sk, vf);
+					target[length++] = new AbstractMap.SimpleImmutableEntry<>(sk, vf);
 				}
 			}
 		}
-		return index == 0 ? Map.of() : new ImmutableMap<>(
-				new ImmutableSet<>((Map.Entry<String,Object>[])(index < target.length ? Arrays.copyOf(target, index) : target)));
+		if(length == 0){
+			return Map.of();
+		}
+		Arrays.sort(target, 0, length, entryComparator);
+		String latest = target[0].getKey();
+		int a = 1,b = 1;
+		while(a < length){
+			String current = target[a].getKey();
+			if(!latest.equals(current)){
+				latest = current;
+				target[b] = target[a];
+				b++;
+			}
+			a++;
+		}
+		return new Immutable.ImmutableMap(
+				new Immutable.ImmutableSet(b < target.length ? Arrays.copyOf(target, b) : target));
 	}
 	@SuppressWarnings("unchecked")
 	public static List<Object> freezeList(Iterable<?> itr){
 		if(itr instanceof JSList){
 			itr = ((JSList)itr).list;
 		}
-		if(itr instanceof ImmutableList){
-			return (ImmutableList<Object>)itr;
+		if(itr instanceof Immutable){
+			return (List<Object>)itr;
 		}
 		if(itr instanceof Collection<?>){
 			Collection<?> col = (Collection<?>)itr;
@@ -805,13 +838,13 @@ public final class JSON {
 				}
 				target[index++] = freeze(obj);
 			}
-			return target.length == 0 ? List.of() : new ImmutableList<>(index < target.length ? Arrays.copyOf(target, index) : target);
+			return target.length == 0 ? List.of() : new Immutable.ImmutableList<>(index < target.length ? Arrays.copyOf(target, index) : target);
 		}
 		LinkedList<Object> target = new LinkedList<>();
 		for(Object obj : itr){
 			target.add(freeze(obj));
 		}
-		return target.isEmpty() ? List.of() : new ImmutableList<>(target.toArray());
+		return target.isEmpty() ? List.of() : new Immutable.ImmutableList<>(target.toArray());
 	}
 	/**
 	 * If the value is a known immutable type, returns the value.<br>
@@ -875,7 +908,7 @@ public final class JSON {
 			for(int i = 0;i < len;i++){
 				data[i] = freeze(Array.get(value, i));
 			}
-			return new JSList(new ImmutableList<>(data));
+			return new JSList(new Immutable.ImmutableList<>(data));
 		}
 		return value.toString();//May return null.
 	}
@@ -1024,5 +1057,11 @@ public final class JSON {
 			write(c);
 			return this;
 		}
+	}
+	public static boolean isImmutable(Map<?,?> obj){
+		return (obj instanceof Mirror.DescendingMap ? ((Mirror.DescendingMap<?,?>)obj).mirror : obj) instanceof Immutable;
+	}
+	public static boolean isImmutable(Iterable<?> obj){
+		return (obj instanceof Mirror.DescendingSet ? ((Mirror.DescendingSet<?>)obj).mirror : obj) instanceof Immutable;
 	}
 }
