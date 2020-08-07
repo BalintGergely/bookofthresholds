@@ -3,6 +3,7 @@ package net.balintgergely.runebook;
 import java.awt.Color;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,6 +13,7 @@ import javax.swing.ImageIcon;
 
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
+import net.balintgergely.util.JSON;
 
 public class RuneModel {
 	private static final String STAT_MODS_ROUTE = "perk-images/StatMods/";
@@ -25,6 +27,7 @@ public class RuneModel {
 	private Path[] paths;
 	private Statstone[] statStones;
 	public final Map<Integer,Stone> fullMap;
+	public final Rune foundation;
 	public RuneModel(JSList model,Function<String,BufferedImage> ip,AssetManager mg){
 		paths = new Path[model.size()];
 		HashMap<Integer,Stone> fm = new HashMap<>();
@@ -47,6 +50,7 @@ public class RuneModel {
 			fm.put(st.id, st);
 		}
 		fullMap = Collections.unmodifiableMap(fm);//Faster.
+		foundation = new Rune(this, null, null, Collections.emptyList());
 	}
 	private Statstone sts(int statId,
 			Function<String,BufferedImage> imageProvider,String imageName,String name,int id,int leastSlot,int mostSlot,int index){
@@ -123,8 +127,12 @@ public class RuneModel {
 				Runestone[] sb = new Runestone[slist.size()];
 				for(byte n = 0;n < sb.length;n++){
 					JSMap stone = slist.getJSMap(n);
-					Runestone rs = new Runestone(n,this,
-resize(i == 0 ? KEYSTONE_SIZE : RUNESTONE_SIZE,imageProvider.apply(stone.getString("icon"))),stone.getString("name"),stone.getInt("id"),i);
+					Runestone rs = new Runestone(n,
+							this,
+							resize(i == 0 ? KEYSTONE_SIZE : RUNESTONE_SIZE,imageProvider.apply(stone.getString("icon"))),
+							stone.getString("name"),
+							stone.getString("longDesc"),
+							stone.getInt("id"),i);
 					sb[n] = rs;
 					m.put(rs.id, rs);
 				}
@@ -137,10 +145,16 @@ resize(i == 0 ? KEYSTONE_SIZE : RUNESTONE_SIZE,imageProvider.apply(stone.getStri
 		private static final long serialVersionUID = 1L;
 		public final Path path;
 		public final int slot;
-		private Runestone(byte order,Path path,Image image,String name,int id,int slot){
-			super(order,image,name,id);
+		public final String description;
+		private Runestone(byte order,Path path,Image image,String name,String description,int id,int slot){
+			super(order,image,name.toUpperCase(),id);
 			this.path = path;
 			this.slot = slot;
+			this.description = description;
+		}
+		@Override
+		public String toString(){
+			return "<html><h2>"+super.getDescription()+"</h2>"+description+"</html>";
 		}
 	}
 	public static class Statstone extends Stone{
@@ -172,5 +186,16 @@ resize(i == 0 ? KEYSTONE_SIZE : RUNESTONE_SIZE,imageProvider.apply(stone.getStri
 	}
 	private static Image resize(int dim,Image img){
 		return img.getScaledInstance(dim, dim, Image.SCALE_SMOOTH);
+	}
+	public Rune parseRune(JSMap map){
+		JSList perks = JSON.toJSList(map.peek("selectedPerkIds"));
+		ArrayList<Stone> stoneList = new ArrayList<>(perks.size());
+		Path primaryPath = (Path)fullMap.get(map.peekInt("primaryStyleId"));
+		Path secondaryPath = (Path)fullMap.get(map.peekInt("subStyleId"));
+		int len = perks.size();
+		for(int i = 0;i < len;i++){
+			stoneList.add(fullMap.get(perks.getInt(i)));
+		}
+		return new Rune(this, primaryPath, secondaryPath, stoneList);
 	}
 }

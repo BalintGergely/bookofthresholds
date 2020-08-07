@@ -1,24 +1,26 @@
 package net.balintgergely.runebook;
 
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.Transferable;
-import java.awt.datatransfer.UnsupportedFlavorException;
-import java.io.IOException;
 import java.util.Objects;
 
-public class Build implements Transferable{
-	private static final DataFlavor DATA_FLAVOR = new DataFlavor(Build.class, "Rune Book Page");
+public class Build implements Cloneable{
 	private Champion champion;
 	private byte roles;
 	private Rune rune;
 	private String name;
-	long timestamp;
+	private long timestamp;
 	public Build(String name,Champion champion,Rune rune,byte roles,long timestamp){
 		this.name = Objects.requireNonNull(name);
 		this.roles = roles;
 		this.rune = Objects.requireNonNull(rune);
 		this.champion = champion;
 		this.timestamp = timestamp;
+	}
+	public Build(Build that){
+		this.name = that.name;
+		this.roles = that.roles;
+		this.rune = that.rune;
+		this.champion = that.champion;
+		this.timestamp = that.timestamp;
 	}
 	public Champion getChampion(){
 		return champion;
@@ -44,19 +46,14 @@ public class Build implements Transferable{
 	public void setName(String name){
 		this.name = Objects.requireNonNull(name);
 	}
-	@Override
-	public DataFlavor[] getTransferDataFlavors() {
-		return new DataFlavor[]{DATA_FLAVOR};
+	public long getTimestamp() {
+		return timestamp;
+	}
+	public void setTimestamp(long timestamp){
+		this.timestamp = timestamp;
 	}
 	@Override
-	public boolean isDataFlavorSupported(DataFlavor flavor) {
-		return flavor.equals(DATA_FLAVOR);
-	}
-	@Override
-	public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {
-		if(!flavor.equals(DATA_FLAVOR)){
-			throw new UnsupportedFlavorException(flavor);
-		}
-		return this;
+	public Build clone() throws CloneNotSupportedException{
+		return (Build)super.clone();
 	}
 }

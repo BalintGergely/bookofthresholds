@@ -2,9 +2,12 @@ package net.balintgergely.runebook;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.TreeMap;
 import java.util.zip.CRC32;
 import java.util.Map.Entry;
+import java.util.ResourceBundle.Control;
 
 import javax.imageio.ImageIO;
 
@@ -33,9 +36,41 @@ class AssetManager {
 	BufferedImage windowIcon;
 	BufferedImage iconSprites;
 	BufferedImage background;
-	PropertyResourceBundle z = (PropertyResourceBundle) ResourceBundle.getBundle("locale");
-	AssetManager(DataDragon dragon,String gameVersion) throws IOException{
-		String locale = z.getString("dataDragonLocale");
+	PropertyResourceBundle z;
+	AssetManager(DataDragon dragon,String gameVersion,String locale) throws IOException{
+		Locale l = null;
+		if(locale == null){
+			locale = (String)dragon.fetchObject("locale.txt");
+		}else{
+			dragon.putString("locale.txt", locale);//This time we got to retrieve client locale. Store it.
+		}
+		if(locale == null){//We have yet to retrieve the locale from the LCU. Use data dragon.
+			l = Locale.getDefault();
+			JSList localeData = JSON.asJSList(dragon.fetchObject("languages.json"), true);
+			@SuppressWarnings("unchecked")
+			List<String> localeList = (List<String>)(List<?>)localeData.list;
+			a: for(Locale lc : Control.getControl(Control.FORMAT_DEFAULT).getCandidateLocales("", l)){
+				String tag = lc.toLanguageTag().toLowerCase(Locale.ROOT).replace('-', '_');
+				for(String nm : localeList){
+					if(nm.toLowerCase(Locale.ROOT).startsWith(tag)){
+						locale = nm;//Found a match.
+						break a;
+					}
+				}
+			}//This might be a bad way to do it. We basically default to system locale if supported by LCU.
+			if(locale == null){
+				locale = "en_GB";//Not even LCU supports the system locale. Default to english.
+			}
+		}
+		try{
+			l = Locale.forLanguageTag(locale.replace('_', '-'));
+		}catch(Exception e){
+			e.printStackTrace();
+			if(l == null){
+				l = Locale.getDefault();
+			}
+		}
+		z = (PropertyResourceBundle) ResourceBundle.getBundle("locale",l);
 		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/"+locale+"/championFull.json"), true).getJSMap("data");
 		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/"+locale+"/runesReforged.json"), true);
 		HashSet<String> imageCollection = new HashSet<>();
@@ -68,8 +103,8 @@ class AssetManager {
 					image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h")));
 		}
 		champions = Collections.unmodifiableNavigableMap(champ);
-		iconSprites = loadImageWithHash("icons.png",990741473);//Absolutely NO tampering please!
-		background = loadImageWithHash("background.png",1433901601);
+		iconSprites = loadImageWithHash("icons.png",491867024l);//Absolutely NO tampering please!
+		background = loadImageWithHash("background.png",1433901601l);
 	}
 	BufferedImage loadImageWithHash(String name,long checksum) throws IOException{
 		CRC32 sum = new CRC32();
@@ -117,6 +152,7 @@ class AssetManager {
 		}
 	}
 	public void paintRoleIcon(Graphics gr,byte roles,int x,int y){
+		roles &= 0x1F;
 		if(roles == 0x1F){//All roles
 			rimg(gr, x, y, 3, 3);
 		}else if(roles == 0x1D){//Special case: All but mid
@@ -140,31 +176,34 @@ class AssetManager {
 				case JUNGLE:rimg(gr, x, y, 3, 0);break;//Jungle
 				case SUPPORT:rimg(gr, x, y, 3, 1);break;//Support
 				default:
-					icog(gr, x+2, y+2, false);
-					icog(gr, x+10, y+10, true);
+					icog(gr, x+2, y+2, false,false);
+					icog(gr, x+10, y+10, true,true);
 				}
 			}else if((roles & 0x18) != 0x18){//Laning roles and either jungle or support.
 				if(mid){
-					rimg(gr, x, y, 1, 3);
+					icog(gr, x+12, y, true, false);
+					icog(gr, x, y+12, false, true);
 					rimg(gr, x, y, 0, top ? 3 : 2);
 					rimg(gr, x, y, 2, bot ? 3 : 2);
 				}else{
 					rimg(gr, x, y, 0, top ? 1 : 0);
 					rimg(gr, x, y, 2, bot ? 1 : 0);
 				}
-				icog(gr, x+6,y+6, (roles & 0x18) == SUPPORT);
+				boolean isSup = (roles & 0x18) == SUPPORT;
+				icog(gr, x+6,y+6, isSup, isSup);
 			}else{//Both jungle and support. Either top or bot.
 				if(mid){
-					rimg(gr, x, y, 1, 3);
+					icog(gr, x+12, y, true, false);
+					icog(gr, x, y+12, false, true);
 				}
 				if(top){
 					rimg(gr, x, y, 0, mid ? 3 : 1);
-					icog(gr, x+5, y+5, false);
-					icog(gr, x+12, y+12, true);
+					icog(gr, x+5, y+5, false,false);
+					icog(gr, x+12, y+12, true,true);
 				}else{
 					rimg(gr, x, y, 2, mid ? 3 : 1);
-					icog(gr, x, y, false);
-					icog(gr, x+7, y+7, true);
+					icog(gr, x, y, false,false);
+					icog(gr, x+7, y+7, true,true);
 				}
 			}
 		}
@@ -174,9 +213,9 @@ class AssetManager {
 		iy *= 24;
 		gr.drawImage(iconSprites, tx, ty, tx+24, ty+24, ix, iy, ix+24, iy+24, null);
 	}
-	private void icog(Graphics gr,int tx,int ty,boolean b){
-		int ix = b ? 36 : 24;
-		int iy = b ? 60 : 48;
+	private void icog(Graphics gr,int tx,int ty,boolean x,boolean y){
+		int ix = x ? 36 : 24;
+		int iy = y ? 60 : 48;
 		gr.drawImage(iconSprites, tx, ty, tx+12, ty+12, ix, iy, ix+12, iy+12, null);
 	}
 }

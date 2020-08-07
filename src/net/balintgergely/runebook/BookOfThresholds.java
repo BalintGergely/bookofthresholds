@@ -2,10 +2,15 @@ package net.balintgergely.runebook;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.ComponentOrientation;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
@@ -21,23 +26,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
+import javax.swing.DropMode;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
+import javax.swing.ToolTipManager;
 import javax.swing.UIManager;
+import javax.swing.border.Border;
+import javax.swing.border.CompoundBorder;
+import javax.swing.border.LineBorder;
 import javax.swing.event.ChangeEvent;
-import javax.swing.event.ListSelectionEvent;
 
-import net.balintgergely.runebook.RuneModel.Path;
-import net.balintgergely.runebook.RuneModel.Stone;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
@@ -45,22 +54,31 @@ import net.balintgergely.util.JSON;
 public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
-	private static final Executor EVENT_QUEUE = EventQueue::invokeLater;
 	private static final String GITHUB = "https://github.com/BalintGergely/bookofthresholds";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){}//Eat
-		
 		HttpClient client;
 		DataDragon dragon;
 		AssetManager assets;
 		System.out.println("Initializing Nexus...");
+		ClientManager clm;
 		try{
 			client = HttpClient.newBuilder().sslContext(ClientManager.makeContext()).build();
 			System.out.println("Confronting Data Dragon...");
 			dragon = new DataDragon(new File("dataDragon.zip"), client);
-			assets = new AssetManager(dragon, "10.15.1");
+			System.out.println("Fetching Runeterran dictionary...");
+			String localeString;
+			try{
+				clm = new ClientManager(client);
+				localeString = clm.getLocale();
+			}catch(Throwable th){
+				clm = null;
+				localeString = null;
+				JOptionPane.showMessageDialog(null, th.getMessage()+"\r\nRune Book of Thresholds will not be able to export runes.");
+			}
+			assets = new AssetManager(dragon, "10.16.1", localeString);
 			System.out.println("Securing Cloud to Earth...");
 			if(dragon.finish()){
 				System.out.println("File updated.");
@@ -74,13 +92,6 @@ public class BookOfThresholds extends JFrame{
 		}
 		CompletableFuture<BookOfThresholds> cmpl = new CompletableFuture<>();
 		{
-			ClientManager clm;
-			try{
-				clm = new ClientManager(assets,client);
-			}catch(Throwable th){
-				clm = null;
-				JOptionPane.showMessageDialog(null, th.getMessage()+"\r\nRune Book of Thresholds will not be able to export runes.");
-			}
 			ArrayList<Build> buildList = new ArrayList<Build>(0);
 			System.out.println("Loading saved runes...");
 			if(SAVE_FILE.exists()){
@@ -95,15 +106,7 @@ public class BookOfThresholds extends JFrame{
 							String champ = bld.peekString("champion");
 							Champion champion = champ == null ? null : assets.champions.get(champ);
 							byte roles = bld.peekByte("roles");
-							JSList perks = bld.getJSList("selectedPerkIds");
-							ArrayList<Stone> stoneList = new ArrayList<>();
-							Path primaryPath = (Path)assets.runeModel.fullMap.get(bld.peekInt("primaryStyleId"));
-							Path secondaryPath = (Path)assets.runeModel.fullMap.get(bld.peekInt("subStyleId"));
-							int len = perks.size();
-							for(int i = 0;i < len;i++){
-								stoneList.add(assets.runeModel.fullMap.get(perks.getInt(i)));
-							}
-							buildList.add(new Build(name, champion, new Rune(assets.runeModel,primaryPath,secondaryPath,stoneList), roles,
+							buildList.add(new Build(name, champion, assets.runeModel.parseRune(bld), roles,
 									bld.peekLong("timestamp")));
 						}catch(Throwable t){
 							t.printStackTrace();
@@ -116,6 +119,7 @@ public class BookOfThresholds extends JFrame{
 			System.out.println("Initializing window...");
 			final ClientManager clientManager = clm;
 			EventQueue.invokeAndWait(() -> {
+				ToolTipManager.sharedInstance().setDismissDelay(Integer.MAX_VALUE);
 				try{
 					cmpl.complete(new BookOfThresholds(assets, clientManager, buildList));
 				}catch(Throwable e){
@@ -124,15 +128,25 @@ public class BookOfThresholds extends JFrame{
 			});
 		}
 		BookOfThresholds runeBook = cmpl.get();
+		if(clm != null){
+			clm.startSeekerThread();
+		}
 		System.out.println("Done. Book, meet new friend!");
 		long nextSaveTime = 0;
+		CompletableFuture<String> shutdown = null;
 		while(true){
-			synchronized(runeBook.buildListModel){
-				while(!(runeBook.buildListChanged || runeBook.shutdownInitiated)){
-					runeBook.buildListModel.wait();
+			while(!(runeBook.buildListModel.getChangeFlag() || runeBook.shutdownInitiated)){
+				runeBook.buildListModel.awaitChange();
+			}
+			if(runeBook.shutdownInitiated && shutdown == null){
+				System.out.println("Shutdown initiated.");
+				if(clm == null){
+					shutdown = CompletableFuture.completedFuture("What am I even running on?");
+				}else{
+					shutdown = clm.close("Close command sent to client.");
 				}
 			}
-			if(runeBook.buildListChanged){
+			if(runeBook.buildListModel.getChangeFlag()){
 				long currentTime = System.currentTimeMillis();
 				if(currentTime < nextSaveTime && !runeBook.shutdownInitiated){
 					synchronized(runeBook.buildListModel){
@@ -146,12 +160,12 @@ public class BookOfThresholds extends JFrame{
 				}
 				List<Build> bls = runeBook.buildListModel.publicList;
 				JSList buildList = new JSList(bls.size());
-				runeBook.buildListChanged = false;
+				runeBook.buildListModel.clearChangeFlag();
 				for(Build build : bls){
 					JSMap mp = build.getRune().toJSMap().put(
 							"name",build.getName(),
 							"roles",build.getRoles(),
-							"timestamp",build.timestamp);
+							"timestamp",build.getTimestamp());
 					Champion ch = build.getChampion();
 					if(ch != null){
 						mp.put("champion",ch.id);
@@ -163,31 +177,39 @@ public class BookOfThresholds extends JFrame{
 					JSON.write(dataMap, writer);
 					writer.flush();
 				}catch(Throwable t){
+					System.err.println(shutdown == null ? "Ouch. Will see you in the next attempt." : "No. No! We can fix this!");
 					t.printStackTrace();
 				}
 				nextSaveTime = currentTime+10000;
-			}else if(runeBook.shutdownInitiated){
+			}else if(shutdown != null){
+				try{//Give the client 5 seconds to close our connection.
+					System.out.println(shutdown.get(5, TimeUnit.SECONDS));
+				}catch(Throwable t){
+					t.printStackTrace();
+				}
+				System.out.println("Goodbye.");
 				System.exit(0);
 			}
 		}
 	}
-	private volatile boolean buildListChanged = false, shutdownInitiated = false;
+	private volatile boolean shutdownInitiated = false;
 	private AssetManager assetManager;
 	private ClientManager clientManager;
 	private JTextField nameField;
-	private JButton saveButton,eraseButton,completeButton,exportButton;
+	private JButton /*saveButton,*/eraseButton,completeButton,exportButton;
 	private BuildListModel buildListModel;
-	private Build currentBuild;
 	private LargeBuildPanel buildPanel;
 	private Rune currentRune;
+	private JPanel mainPanel;
 	private BookOfThresholds(AssetManager assets,ClientManager client,ArrayList<Build> builds){
 		super(assets.z.getString("window"));
 		super.setIconImage(assets.windowIcon);
 		this.assetManager = assets;
 		this.clientManager = client;
 		this.buildListModel = new BuildListModel(builds);
-		JPanel mainPanel = new JPanel(new BorderLayout()) {
+		mainPanel = new JPanel(new GridBagLayout(),false) {
 			private static final long serialVersionUID = 1L;
+			private BufferedImage temp;
 			@Override
 			protected void paintComponent(Graphics g) {
 				super.paintComponent(g);
@@ -208,60 +230,144 @@ public class BookOfThresholds extends JFrame{
 				}else{
 					imgheight = height;
 				}
-				g.drawImage(assetManager.background, (width-imgwidth)/2, (height-imgheight)/2, imgwidth, imgheight, null);
+				if(temp == null || temp.getWidth() != imgwidth || temp.getHeight() != imgheight){
+					temp = new BufferedImage(imgwidth, imgheight, BufferedImage.TYPE_INT_ARGB);
+					Graphics2D gr = temp.createGraphics();
+					gr.drawImage(assetManager.background, 0, 0, imgwidth, imgheight, null);
+					gr.dispose();
+				}
+				g.drawImage(temp, (width-imgwidth)/2, (height-imgheight)/2, imgwidth, imgheight, null);
 			}
 		};
 		mainPanel.setPreferredSize(new Dimension(1200, 675));//  3/4 the size of the image
 		super.add(mainPanel);
-		buildListModel.addListSelectionListener(this::valueChanged);
+		buildListModel.addChangeListener(this::stateChanged);
 		super.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-		{
-
-			JList<Build> list = new JList<>(buildListModel);
-			list.setOpaque(false);
-			list.setBackground(new Color(0,true));
-			list.setSelectionModel(buildListModel);
-			list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
-			list.setVisibleRowCount(0);
-			list.setCellRenderer(new BuildRenderer(assetManager));
-			list.setDragEnabled(true);
-			JScrollPane sp = new JScrollPane(list,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-			sp.setBorder(null);
-			sp.setOpaque(false);
-			sp.getViewport().setOpaque(false);
-			mainPanel.add(sp,BorderLayout.CENTER);
-		}
-		{
-			JPanel sidePanel = new JPanel(new BorderLayout());
-			sidePanel.setOpaque(false);
-			mainPanel.add(sidePanel,BorderLayout.LINE_START);
-			buildPanel = new LargeBuildPanel(assets);
-			buildPanel.model.addChangeListener(this::stateChanged);
-			currentRune = buildPanel.getRune();
-			sidePanel.add(buildPanel,BorderLayout.CENTER);
-			JToolBar buildOptionsToolBar = new JToolBar();
-			buildOptionsToolBar.setFloatable(false);
-			buildOptionsToolBar.setOpaque(false);
-			buildOptionsToolBar.setBorder(null);
-			sidePanel.add(buildOptionsToolBar,BorderLayout.PAGE_START);
-			{
-				buildOptionsToolBar.add(exportButton = toolButton(3,4,"EXPORT",
-						assets.z.getString(client == null ? "exportCant" : "exportCan"),
-						false,true));
-				exportButton.setVisible(false);
-				buildOptionsToolBar.add(completeButton = toolButton(2,4,"FIX",assets.z.getString("fix"),true,true));
-				buildOptionsToolBar.add(nameField = new JTextField(16));
-				buildOptionsToolBar.add(eraseButton = toolButton(1,4,"ERASE",assets.z.getString("erase"),false,false));
-				buildOptionsToolBar.add(saveButton = toolButton(0,4,"SAVE",assets.z.getString("save"),true,false));
+		BuildTransferHandler transferer = new BuildTransferHandler(this);
+		{GridBagConstraints con = new GridBagConstraints(0, 0, 1, 1, 0, 0, GridBagConstraints.CENTER, GridBagConstraints.NONE,
+				new Insets(0,0,0,0), 0, 0);
+			con.fill = GridBagConstraints.BOTH;
+			exportButton = toolButton(3,4,"EXPORT",
+					assets.z.getString(client == null ? "exportCant" : "exportCan"),
+					false);
+			Border	basicBuildBorder = new LineBorder(new Color(0,true), 2, true),
+					selectdBuildBorder = new LineBorder(Color.WHITE, 2, true);
+			BuildIcon rendererBuildIcon = new BuildIcon(false, assets);
+			JLabel rendererLabel = new JLabel(rendererBuildIcon);
+			rendererLabel.setDoubleBuffered(false);
+			rendererLabel.setBorder(basicBuildBorder);
+			if(client == null){
+				exportButton = toolButton(3,4,"EXPORT",assets.z.getString("exportCant"),false);
+			}else{
+				exportButton = toolButton(3,4,"EXPORT",assets.z.getString("exportCan"),false);
+				JLabel statusLabel = new JLabel();
+				statusLabel.setLayout(new BorderLayout());
+				//statusLabel.setForeground(Color.WHITE);
+				statusLabel.setOpaque(true);
+				statusLabel.setHorizontalTextPosition(JLabel.CENTER);
+				/*JToolBar toolBar = new JToolBar();
+				toolBar.setBorder(new LineBorder(Color.LIGHT_GRAY));
+				toolBar.setFloatable(false);
+				toolBar.add(statusLabel);
+				toolBar.add(importButton);*/
+				mainPanel.add(statusLabel,con);
+				Border insideBorder = new LineBorder(new Color(0, true), 2);
+				Border[] stateBorders = new Border[]{
+					new CompoundBorder(new LineBorder(new Color(0xAE9668), 2),insideBorder),
+					new CompoundBorder(new LineBorder(new Color(0x7D89DA), 2),insideBorder),
+					new CompoundBorder(new LineBorder(new Color(0x3C9AA2), 2),insideBorder),
+					new CompoundBorder(new LineBorder(new Color(0x8CBF73), 2),insideBorder),
+					new CompoundBorder(new LineBorder(new Color(0xC33C3D), 2),insideBorder),
+				};
+				client.setChangeListener(() -> {
+					int state = client.getState();
+					statusLabel.setText(assets.z.getString("state"+state));
+					statusLabel.setToolTipText(assets.z.getString("state"+state+"tt"));
+					statusLabel.setBorder(stateBorders[state]);
+					exportButton.setEnabled(state == 3);
+				});
+				con.gridy++;
+				con.weighty = 1;
+				con.gridheight = 0;
+				HybridListModel<Build> hlm = client.getListModel(assetManager);
+				JList<Build> list = new JList<>(hlm);
+				list.setTransferHandler(transferer);
+				list.setDragEnabled(true);
+				list.setOpaque(false);
+				list.setSelectionModel(hlm);
+				list.setCellRenderer((JList<? extends Build> l, Build v, int index,
+							boolean isSelected, boolean cellHasFocus) -> {
+								rendererBuildIcon.setBuild(v);
+								rendererBuildIcon.setGridVariant(false);
+								rendererLabel.setBorder(isSelected ? selectdBuildBorder : basicBuildBorder);
+								return 	rendererLabel;
+							});
+				JScrollPane sp = new JScrollPane(list,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+				sp.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT);
+				sp.setBorder(null);
+				sp.setOpaque(false);
+				sp.getViewport().setOpaque(false);
+				JScrollBar sb = sp.getVerticalScrollBar();
+				Dimension prefSb = sb.getPreferredSize();
+				Dimension prefRd = rendererLabel.getPreferredSize();
+				prefRd.width += prefSb.width;
+				sp.setMinimumSize(prefRd);
+				mainPanel.add(sp,con);
+				con.gridx++;
 			}
+			con.gridy = 0;con.weighty = 0;con.gridwidth = 1;con.gridheight = 1;
+			{
+				JToolBar toolBar = new JToolBar();
+				toolBar.setBorder(new LineBorder(Color.LIGHT_GRAY));
+				toolBar.setFloatable(false);
+				toolBar.add(exportButton);
+				exportButton.setVisible(false);
+				toolBar.add(completeButton = toolButton(2,4,"FIX",assets.z.getString("fix"),true));
+				toolBar.add(nameField = new JTextField(16));
+				toolBar.add(eraseButton = toolButton(1,4,"ERASE",assets.z.getString("erase"),false));
+				toolBar.add(/*saveButton = */toolButton(0,4,"SAVE",assets.z.getString("save"),true));
+				mainPanel.add(toolBar,con);
+			}
+			con.gridy = 1;con.weighty = 1;
+			{
+				buildPanel = new LargeBuildPanel(assets);
+				buildPanel.setTransferHandler(transferer);
+				buildPanel.model.addChangeListener(this::stateChanged);
+				currentRune = buildPanel.getRune();
+				mainPanel.add(buildPanel,con);
+			}
+			con.gridy = 2;con.weighty = 0;
 			{
 				JButton aboutButton = new JButton("<html>"+assets.z.getString("aboutLine0")+"<br>"
 						+ assets.z.getString("aboutLine1")+" "+GITHUB+"</html>");
 				aboutButton.setActionCommand("ABOUT");
 				aboutButton.setOpaque(false);
 				aboutButton.addActionListener(this::actionPerformed);
-				sidePanel.add(aboutButton,BorderLayout.PAGE_END);
+				mainPanel.add(aboutButton,con);
 				//TODO Add mobafire rune link import/export via the Mobafire class.
+			}
+			con.gridx++;con.gridy = 0;con.weightx = 1;con.gridheight = 0;
+			{
+				JList<Build> list = new JList<>(buildListModel);
+				list.setTransferHandler(transferer);
+				list.setDragEnabled(true);
+				list.setDropMode(DropMode.INSERT);
+				list.setOpaque(false);
+				list.setSelectionModel(buildListModel);
+				list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
+				list.setVisibleRowCount(0);
+				list.setCellRenderer((JList<? extends Build> l, Build v, int index,
+						boolean isSelected, boolean cellHasFocus) -> {
+							rendererBuildIcon.setBuild(v);
+							rendererBuildIcon.setGridVariant(true);
+							rendererLabel.setBorder(isSelected ? selectdBuildBorder : basicBuildBorder);
+							return 	rendererLabel;
+						});
+				JScrollPane sp = new JScrollPane(list,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+				sp.setBorder(null);
+				sp.setOpaque(false);
+				sp.getViewport().setOpaque(false);
+				mainPanel.add(sp,con);
 			}
 		}
 		super.pack();
@@ -277,43 +383,50 @@ public class BookOfThresholds extends JFrame{
 	protected void processWindowEvent(WindowEvent e) {
 		super.processWindowEvent(e);
 		if (e.getID() == WindowEvent.WINDOW_CLOSING) {
+			super.setVisible(false);
 			shutdownInitiated = true;
-			synchronized(buildListModel){
-				buildListModel.notifyAll();
-			}
+			buildListModel.notifyChange();
 		}
 	}
-	private JButton toolButton(int imgx,int imgy,String action,String toolTip,boolean enabled,boolean opaque){
+	private JButton toolButton(int imgx,int imgy,String action,String toolTip,boolean enabled){
 		JButton button = new JButton(new ImageIcon(assetManager.iconSprites.getSubimage(imgx*24, imgy*24, 24, 24)));
-		button.setOpaque(opaque);
 		button.setEnabled(enabled);
 		button.setToolTipText(toolTip);
 		button.setActionCommand(action);
 		button.addActionListener(this::actionPerformed);
 		return button;
 	}
-	private void valueChanged(ListSelectionEvent e){
-		if(e.getValueIsAdjusting()){
-			return;
-		}
-		Build selectedElement = buildListModel.getSelectedElement();
-		if(currentBuild != selectedElement){
-			currentBuild = selectedElement;
+	private void stateChanged(ChangeEvent e){
+		if(e.getSource() == buildListModel){
+			if(buildListModel.getValueIsAdjusting()){
+				return;
+			}
+			Build selectedElement = buildListModel.getSelectedElement();
 			if(selectedElement != null){
 				nameField.setText(selectedElement.getName());
 				buildPanel.setChampion(selectedElement.getChampion());
 				buildPanel.setSelectedRoles(selectedElement.getRoles());
 				buildPanel.setRune(currentRune = selectedElement.getRune());
 			}
+			eraseButton.setEnabled(selectedElement != null);
+		}else{
+			currentRune = buildPanel.getRune();
+			boolean runeComplete = currentRune.isComplete;
+			exportButton.setVisible(runeComplete);
+			completeButton.setVisible(!runeComplete);
 		}
-		eraseButton.setEnabled(selectedElement != null);
 	}
-	private void stateChanged(ChangeEvent e){
-		currentRune = buildPanel.getRune();
-		boolean runeComplete = currentRune.isComplete;
-		exportButton.setEnabled(clientManager != null && runeComplete);
-		exportButton.setVisible(runeComplete);
-		completeButton.setVisible(!runeComplete);
+	Build createBuild(){
+		return new Build(nameField.getName(), buildPanel.getChampion(), buildPanel.getRune(), buildPanel.getSelectedRoles(), 0);
+	}
+	void applyBuild(Build bld){
+		nameField.setText(bld.getName());
+		buildPanel.setChampion(bld.getChampion());
+		buildPanel.setSelectedRoles(bld.getRoles());
+		buildPanel.setRune(currentRune = bld.getRune());
+	}
+	AssetManager getAssetManager(){
+		return assetManager;
 	}
 	private void actionPerformed(ActionEvent e){
 		switch(e.getActionCommand()){
@@ -324,16 +437,12 @@ public class BookOfThresholds extends JFrame{
 			break;
 		case "ERASE":{
 				buildListModel.removeSelectedBuild();
-				buildListChanged = true;
-				synchronized(buildListModel){
-					buildListModel.notifyAll();
-				}
 			}break;
 		case "SAVE":{
 				String name = nameField.getText();
 				Champion champion = buildPanel.getChampion();
 				byte roles = buildPanel.getSelectedRoles();
-				Build build = currentBuild;
+				Build build = buildListModel.getSelectedElement();
 				if(build != null && 
 						(champion != build.getChampion()//Champion changed.
 								||(
@@ -352,32 +461,36 @@ public class BookOfThresholds extends JFrame{
 					build = null;
 				}
 				if(build == null){
-					currentBuild = build = new Build(name, champion, currentRune, roles, System.currentTimeMillis());
-					buildListModel.insertBuild(build);
+					build = new Build(name, champion, currentRune, roles, System.currentTimeMillis());
+					buildListModel.insertBuild(build,0);
 				}else{
 					build.setChampion(champion);
 					build.setName(name);
 					build.setRoles(roles);
 					build.setRune(currentRune);
-					build.timestamp = System.currentTimeMillis();
+					build.setTimestamp(System.currentTimeMillis());
 					buildListModel.buildChanged(build);
-				}
-				buildListChanged = true;
-				synchronized(buildListModel){
-					buildListModel.notifyAll();
 				}
 			}break;
 		case "EXPORT":
 			if(currentRune.isComplete){
-				if(currentBuild != null){
-					currentBuild.timestamp = System.currentTimeMillis();
+				Build crt = buildListModel.getSelectedElement();
+				if(crt != null){
+					crt.setTimestamp(System.currentTimeMillis());
+					//We intentionally not notify the list model that the build has changed.
+					//It is not a bug.
 				}
 				clientManager.exportRune(currentRune, nameField.getText()).thenAcceptAsync(
-						(String str) -> {
-						if(str != null){
-							JOptionPane.showMessageDialog(this, str, assetManager.z.getString("message"), JOptionPane.ERROR_MESSAGE);
+						(Object str) -> {
+						if(str instanceof String){
+							JOptionPane.showMessageDialog(this, 
+							assetManager.z.getString((String)str), assetManager.z.getString("message"), JOptionPane.ERROR_MESSAGE);
 						}
-						}, EVENT_QUEUE);
+						if(str instanceof Integer){
+							JOptionPane.showMessageDialog(this, 
+							assetManager.z.getString("errorCode")+" "+str, assetManager.z.getString("message"), JOptionPane.ERROR_MESSAGE);
+						}
+						}, ClientManager.EVENT_QUEUE);
 			}break;
 		case "ABOUT":
 			try{

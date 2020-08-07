@@ -32,8 +32,11 @@ public class Champion implements Icon{
 	public int getIconHeight() {
 		return 24;
 	}
+	public String getName(){
+		return name;
+	}
 	@Override
 	public String toString(){
-		return name;
+		return id;
 	}
 }

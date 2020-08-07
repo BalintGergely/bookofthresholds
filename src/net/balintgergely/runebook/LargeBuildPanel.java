@@ -2,6 +2,10 @@ package net.balintgergely.runebook;
 
 import java.awt.Image;
 import java.awt.RenderingHints;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 import java.awt.image.FilteredImageSource;
 import java.awt.image.RGBImageFilter;
 import java.util.Collection;
@@ -10,14 +14,19 @@ import java.util.List;
 import java.util.function.Function;
 
 import javax.swing.GroupLayout;
+import javax.swing.Icon;
 import javax.swing.GroupLayout.Alignment;
 import javax.swing.GroupLayout.Group;
+import javax.swing.border.Border;
+import javax.swing.border.CompoundBorder;
+import javax.swing.border.LineBorder;
 import javax.swing.ImageIcon;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
+import javax.swing.JToolTip;
 
 import net.balintgergely.runebook.RuneButtonGroup.RuneButtonModel;
 import net.balintgergely.runebook.RuneModel.Path;
@@ -30,7 +39,7 @@ import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 
-public class LargeBuildPanel extends JPanel{
+public class LargeBuildPanel extends JPanel implements MouseListener,FocusListener{
 	private static final boolean VERTICAL = true,HORIZONTAL = false;
 	private static final byte	TYPE_PRIMARY_PATH = 0,
 								TYPE_SECONDARY_PATH = 1,
@@ -40,6 +49,8 @@ public class LargeBuildPanel extends JPanel{
 	private static final long serialVersionUID = 1L;
 	private static final String[] ROLE_NAMES = new String[]{"roleTop","roleMid","roleBot","roleJg","roleSp"};
 	private IdentityHashMap<Image, Image> grayscaleIconVariants = new IdentityHashMap<>();
+	private static final Color TT_BACKGROUND = new Color(0xFF010A13),TT_FOREGROUND = new Color(0xFFCEC6B7);
+	private static final Border TT_BORDER = new CompoundBorder(new LineBorder(new Color(0xFF00080E),1), new LineBorder(new Color(0xFF463714), 2));
 	private Function<Image, Image> getGrayscaleImage = (Image a) -> {
 		RGBImageFilter filter = new RGBImageFilter(){
 			@Override
@@ -55,6 +66,7 @@ public class LargeBuildPanel extends JPanel{
 		return createImage(new FilteredImageSource(a.getSource(), filter));
 	};
 	private JComboBox<Champion> championBox;
+	private JLabel descriptionLabel;
 	RuneButtonGroup model;
 	private RoleDisplayButton[] roles;
 	public void setRune(Rune rn){
@@ -87,6 +99,7 @@ public class LargeBuildPanel extends JPanel{
 		super(null, false);
 		super.setOpaque(false);
 		super.setBackground(new Color(0,true));
+		super.setFocusable(true);
 		model = new RuneButtonGroup(assetManager.runeModel);
 		GroupLayout g = new GroupLayout(this);
 		super.setLayout(g);
@@ -99,7 +112,7 @@ public class LargeBuildPanel extends JPanel{
 		{
 			Collection<Champion> championList = assetManager.champions.values();
 			championBox = new JComboBox<>(championList.toArray(new Champion[championList.size()+1]));
-			championBox.setOpaque(false);
+			//championBox.setOpaque(false);
 			championBox.setSelectedItem(null);
 			JLabel rendererLabel = new JLabel();
 			rendererLabel.setOpaque(true);
@@ -110,18 +123,20 @@ public class LargeBuildPanel extends JPanel{
 			        boolean isSelected,
 			        boolean cellHasFocus) -> {
 			        	rendererLabel.setIcon(value);
-			        	rendererLabel.setText(cellHasFocus || value == null ? "" : value.toString());
+			        	rendererLabel.setText(cellHasFocus || value == null ? "" : value.getName());
 			        	rendererLabel.setBackground(isSelected ? Color.WHITE : Color.LIGHT_GRAY);
 			        	return rendererLabel;
 			        });
 			championBox.setMaximumSize(championBox.getPreferredSize());
 			buildGroup0.add(championBox);
+			super.add(championBox);
 		}
 		{
 			roles = new RoleDisplayButton[5];
 			for(int i = 0;i < 5;i++){
 				RoleDisplayButton bt = new RoleDisplayButton(assetManager,(byte)(1 << i));
 				bt.setToolTipText(assetManager.z.getString(ROLE_NAMES[i]));
+				super.add(bt);
 				buildGroup0.add(roles[i] = bt);
 			}
 		}
@@ -140,6 +155,22 @@ public class LargeBuildPanel extends JPanel{
 				topGroup.addComponent(bt);
 				topLeftGroup.addComponent(bt);
 			}
+			meatGroup.add(leftGroup);
+			meatGroup.hor.addGap(24);
+			meatGroup.add(rightGroup);
+			mainGroup.add(meatGroup);
+			GLG ksRow1 = new GLG(g, HORIZONTAL, Alignment.CENTER, false);
+			GLG ksRow2 = new GLG(g, HORIZONTAL, Alignment.CENTER, false);
+			boolean k = false;
+			for(RuneButtonModel md : model.keystoneModels){
+				(k ? ksRow2 : ksRow1).add(new RuneButton(md, TYPE_KEYSTONE));
+				k = !k;
+			}
+			leftGroup.add(ksRow1);
+			leftGroup.add(ksRow2);
+			for(List<RuneButtonModel> lst : model.primarySlotModels){
+				rowOfButtons(g, leftGroup, lst, TYPE_RUNESTONE, true);
+			}
 			boolean first = true;
 			for(RuneButtonModel md : model.secondaryPathModels){
 				RuneButton bt = new RuneButton(md, TYPE_SECONDARY_PATH);
@@ -150,38 +181,29 @@ public class LargeBuildPanel extends JPanel{
 					first = false;
 				}
 			}
+			leftGroup.hor.addGap(152);
+			for(List<RuneButtonModel> lst : model.secondarySlotModels){
+				rowOfButtons(g, rightGroup, lst, TYPE_RUNESTONE, true);
+			}
+			rightGroup.hor.addGap(152);
+			for(List<RuneButtonModel> lst : model.statSlotModels){
+				rowOfButtons(g, rightGroup, lst, TYPE_STAT_MOD, false);
+			}
 		}
-		meatGroup.add(leftGroup);
-		meatGroup.hor.addGap(24);
-		meatGroup.add(rightGroup);
-		mainGroup.add(meatGroup);
-		GLG ksRow1 = new GLG(g, HORIZONTAL, Alignment.CENTER, false);
-		GLG ksRow2 = new GLG(g, HORIZONTAL, Alignment.CENTER, false);
-		boolean k = false;
-		for(RuneButtonModel md : model.keystoneModels){
-			(k ? ksRow2 : ksRow1).add(new RuneButton(md, TYPE_KEYSTONE));
-			k = !k;
-		}
-		leftGroup.add(ksRow1);
-		leftGroup.add(ksRow2);
-		for(List<RuneButtonModel> lst : model.primarySlotModels){
-			rowOfButtons(g, leftGroup, lst, TYPE_RUNESTONE, true);
-		}
-		leftGroup.hor.addGap(152);
-		for(List<RuneButtonModel> lst : model.secondarySlotModels){
-			rowOfButtons(g, rightGroup, lst, TYPE_RUNESTONE, true);
-		}
-		rightGroup.hor.addGap(152);
-		for(List<RuneButtonModel> lst : model.statSlotModels){
-			rowOfButtons(g, rightGroup, lst, TYPE_STAT_MOD, false);
+
+		{
+			mainGroup.add(descriptionLabel = new JLabel());
+			descriptionLabel.setForeground(TT_FOREGROUND);
+			descriptionLabel.setBackground(TT_BACKGROUND);
+			descriptionLabel.setOpaque(true);
+			descriptionLabel.setBorder(TT_BORDER);
+			descriptionLabel.setPreferredSize(new Dimension(366, 100));
+			descriptionLabel.setVisible(false);
 		}
 		g.setHorizontalGroup(mainGroup.hor);
 		g.setVerticalGroup(mainGroup.ver);
-		//rightGroup.hor.addGap(0);
-		Dimension dim = super.getPreferredSize();
-		super.setPreferredSize(dim);
-		mainGroup.hor.addGap(dim.width);
 		g.setHonorsVisibility(true);
+		super.setPreferredSize(new Dimension(366,500));
 	}
 	private void rowOfButtons(GroupLayout groupLayout,GLG group,List<RuneButtonModel> models,byte type,boolean markFirst){
 		GLG gr1 = new GLG(groupLayout, HORIZONTAL, Alignment.CENTER, false);
@@ -195,6 +217,28 @@ public class LargeBuildPanel extends JPanel{
 		}
 		group.add(gr1);
 	}
+	@Override
+	public void mouseClicked(MouseEvent e) {}
+	@Override
+	public void mousePressed(MouseEvent e) {}
+	@Override
+	public void mouseReleased(MouseEvent e) {}
+	@Override
+	public void mouseEntered(MouseEvent e) {
+		descriptionLabel.setText(e.getSource().toString());
+		descriptionLabel.setVisible(true);
+	}
+	@Override
+	public void mouseExited(MouseEvent e) {
+	}
+	@Override
+	public void focusGained(FocusEvent e) {
+		descriptionLabel.setText(e.getSource().toString());
+		descriptionLabel.setVisible(true);
+	}
+	@Override
+	public void focusLost(FocusEvent e) {
+	}
 	public class RuneButton extends JToggleButton{
 		private static final long serialVersionUID = 1L;
 		private final byte type;
@@ -205,6 +249,21 @@ public class LargeBuildPanel extends JPanel{
 			super.setRolloverEnabled(true);
 			this.type = type;
 			updateOnModel(model);
+			if(type == TYPE_KEYSTONE || type == TYPE_RUNESTONE){
+				super.addMouseListener(LargeBuildPanel.this);
+				super.addFocusListener(LargeBuildPanel.this);
+			}else{
+				super.setToolTipText(model.getIcon().getDescription());
+			}
+			LargeBuildPanel.this.add(this);
+		}
+		@Override
+		public JToolTip createToolTip(){
+			JToolTip tt = super.createToolTip();
+			tt.setBackground(TT_BACKGROUND);
+			tt.setForeground(TT_FOREGROUND);
+			tt.setBorder(TT_BORDER);
+			return tt;
 		}
 		@Override
 		protected void fireStateChanged() {
@@ -217,10 +276,10 @@ public class LargeBuildPanel extends JPanel{
 				ic = null;
 			}
 			if(ic == null){
+				super.setIcon(null);
 				super.setVisible(false);
 			}else{
 				super.setIcon(ic);
-				super.setToolTipText(ic.toString());
 				super.setVisible(true);
 			}
 		}
@@ -280,6 +339,11 @@ public class LargeBuildPanel extends JPanel{
 				}
 				gr.drawImage(id, offset, offset, null);
 			}
+		}
+		@Override
+		public String toString(){
+			Icon ic = super.getIcon();
+			return ic == null ? "" : ic.toString();
 		}
 	}
 	private static class GLG{

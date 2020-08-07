@@ -55,6 +55,8 @@ public class DataDragon {
 						object = ImageIO.read(input);
 					}else if(name.endsWith(".json")){
 						object = JSON.freeze(JSON.readObject(new InputStreamReader(input,StandardCharsets.UTF_8)));
+					}else if(name.endsWith(".txt")){
+						object = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 					}
 					if(object != null){
 						cache.put(name, object);
@@ -64,6 +66,16 @@ public class DataDragon {
 				th.printStackTrace();
 			}
 		}
+	}
+	/**
+	 * Creates a custom .txt file with the specified string content.
+	 * If such file already exists, overwrite.
+	 */
+	public void putString(String path,String value){
+		if(!path.endsWith(".txt")){
+			throw new IllegalArgumentException();
+		}
+		data.put(path,value);
 	}
 	private Object fetchInternal(String path){
 		Object c = cache.get(path);
@@ -137,14 +149,15 @@ public class DataDragon {
 	/**
 	 * Finishes loading. No more data fetching will take place and the cache file will be written if changed.
 	 */
+	@SuppressWarnings("resource")
 	public boolean finish() throws IOException{
 		httpClient = null;
 		a: if(!file.exists()){
 			file.createNewFile();
 		}else{
-			for(String str : data.keySet()){
-				if(cache.remove(str) == null){
-					break a;//New image.
+			for(Map.Entry<String,Object> entry : data.entrySet()){
+				if(!entry.getValue().equals(cache.remove(entry.getKey()))){//All types use short circuiting via "this == that"
+					break a;//New file.
 				}
 			}
 			if(cache.isEmpty()){
@@ -153,14 +166,20 @@ public class DataDragon {
 		}
 		try(ZipOutputStream output = new ZipOutputStream(new FileOutputStream(file))){
 			OutputStreamWriter writer = new OutputStreamWriter(output,StandardCharsets.UTF_8);
-			for(Map.Entry<String, Object> entry : data.entrySet()){
-				output.putNextEntry(new ZipEntry(entry.getKey()));
+			for(Map.Entry<String,Object> entry : data.entrySet()){
+				String path = entry.getKey();
+				output.putNextEntry(new ZipEntry(path));
 				Object obj = entry.getValue();
-				if(obj instanceof BufferedImage){
+				if(path.endsWith(".png")){
 					ImageIO.write((BufferedImage)obj, "png", output);
-				}else{
+				}else if(path.endsWith(".json")){
 					JSON.write(obj,writer);
 					writer.flush();
+				}else if(path.endsWith(".txt")){
+					writer.write((String)obj);
+					writer.flush();
+				}else{
+					throw new Error();//Not supposed to happen.
 				}
 				output.flush();
 				output.closeEntry();
