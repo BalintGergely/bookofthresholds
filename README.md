@@ -12,7 +12,7 @@ Planned features:<br>
 -Accessing custom and default runes stored in the game client.<br>
 -Automatically filter for the selected champion and draft role.<br>
 
-<a href="https://github.com/BalintGergely/bookofthresholds/raw/master/RuneBook.jar">Download the latest release</a><br>
+<a href="https://balintgergely.github.io/bookofthresholds/RuneBook.jar">Download the latest release</a><br>
 <a href="https://github.com/BalintGergely/bookofthresholds">Github Repository</a>
 
 
