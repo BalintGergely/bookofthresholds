@@ -37,6 +37,7 @@ class AssetManager {
 	BufferedImage iconSprites;
 	BufferedImage background;
 	PropertyResourceBundle z;
+	Locale locale;
 	AssetManager(DataDragon dragon,String gameVersion,String locale) throws IOException{
 		Locale l = null;
 		if(locale == null){
@@ -70,6 +71,8 @@ class AssetManager {
 				l = Locale.getDefault();
 			}
 		}
+		this.locale = l;
+		Locale.setDefault(l);
 		z = (PropertyResourceBundle) ResourceBundle.getBundle("locale",l);
 		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/"+locale+"/championFull.json"), true).getJSMap("data");
 		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/"+locale+"/runesReforged.json"), true);

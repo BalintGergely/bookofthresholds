@@ -20,6 +20,9 @@ import java.io.FileWriter;
 import java.io.Writer;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,20 +55,76 @@ import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
 
 public class BookOfThresholds extends JFrame{
+	private static final int compareVersion(String a,String b){
+		if(a.equals(b)){
+			return 0;
+		}
+		a = a.strip();
+		b = b.strip();
+		int aIndex = 0,bIndex = 0;
+		while(true){
+			int	aNextIndex = a.indexOf('.', aIndex),
+				bNextIndex = b.indexOf('.', bIndex);
+			if(aNextIndex < 0){
+				aNextIndex = a.length();
+			}
+			if(bNextIndex < 0){
+				bNextIndex = b.length();
+			}
+			int av = Integer.parseInt(a.substring(aIndex,aNextIndex)),
+				bv = Integer.parseInt(b.substring(bIndex, bNextIndex));
+			if(av < bv){
+				return -1;
+			}
+			if(bv < av){
+				return 1;
+			}
+			aIndex = aNextIndex+1;
+			bIndex = bNextIndex+1;
+			if(aIndex >= a.length()){
+				if(bIndex >= b.length()){
+					return 0;
+				}
+				return -1;
+			}
+			if(bIndex >= b.length()){
+				return 0;
+			}
+		}
+	}
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
-	private static final String GITHUB = "https://github.com/BalintGergely/bookofthresholds";
+	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
+	private static final String VERSION = "1.0.0";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){}//Eat
+		int argIndex = 0;
+		String doFinishUpdate = null;
+		argReadLoop: while(argIndex < atgs.length){
+			String argument = atgs[argIndex++];
+			switch(argument){
+			case "-finishUpdate":
+				if(argIndex < atgs.length){
+					doFinishUpdate = atgs[argIndex++];
+					continue argReadLoop;
+				}
+				break;
+			}
+			System.out.println("Ignored: "+argument);
+		}
 		HttpClient client;
 		DataDragon dragon;
 		AssetManager assets;
-		System.out.println("Initializing Nexus...");
 		ClientManager clm;
+		System.out.println("Initializing Nexus...");
+		CompletableFuture<HttpResponse<String>> versionCheckFuture;
 		try{
 			client = HttpClient.newBuilder().sslContext(ClientManager.makeContext()).build();
+			versionCheckFuture = doFinishUpdate != null ? null :
+					client.sendAsync(HttpRequest.newBuilder(new URI(GITHUB+"/version.json")).GET().build(),
+							BodyHandlers.ofString(StandardCharsets.UTF_8));
 			System.out.println("Confronting Data Dragon...");
 			dragon = new DataDragon(new File("dataDragon.zip"), client);
 			System.out.println("Fetching Runeterran dictionary...");
@@ -76,9 +135,9 @@ public class BookOfThresholds extends JFrame{
 			}catch(Throwable th){
 				clm = null;
 				localeString = null;
-				JOptionPane.showMessageDialog(null, th.getMessage()+"\r\nRune Book of Thresholds will not be able to export runes.");
 			}
 			assets = new AssetManager(dragon, "10.16.1", localeString);
+			JOptionPane.setDefaultLocale(assets.locale);
 			System.out.println("Securing Cloud to Earth...");
 			if(dragon.finish()){
 				System.out.println("File updated.");
@@ -89,6 +148,32 @@ public class BookOfThresholds extends JFrame{
 			t.printStackTrace();
 			JOptionPane.showMessageDialog(null, t.getMessage(), "Failed to start Rune Book of Thresholds", JOptionPane.ERROR_MESSAGE);
 			return;
+		}
+		if(versionCheckFuture != null){
+			try{
+				HttpResponse<String> response = versionCheckFuture.get(5, TimeUnit.SECONDS);
+				if(response.statusCode()/100 == 2){
+					JSMap versionMap = JSON.toJSMap(JSON.parse(response.body()));
+					if(compareVersion(VERSION,versionMap.peekString("version", "0")) < 0){
+						switch(JOptionPane.showConfirmDialog(null,
+								assets.z.getObject("update"),
+								assets.z.getString("window"),
+								JOptionPane.YES_NO_OPTION, JOptionPane.PLAIN_MESSAGE, new ImageIcon(assets.windowIcon))){
+						case JOptionPane.NO_OPTION:break;
+						case JOptionPane.YES_OPTION:
+							Updater.update(versionMap.getString("download"),
+									assets.locale.toLanguageTag(), assets.z.getString("window"), assets.z.getString("updating"));
+							//$FALL-THROUGH$
+						default:System.exit(0);return;
+						}
+					}
+				}
+			}catch(Throwable th){
+				th.printStackTrace();
+			}
+		}
+		if(clm == null){
+			JOptionPane.showMessageDialog(null, "Rune Book of Thresholds will not be able to export runes.");
 		}
 		CompletableFuture<BookOfThresholds> cmpl = new CompletableFuture<>();
 		{
@@ -130,6 +215,9 @@ public class BookOfThresholds extends JFrame{
 		BookOfThresholds runeBook = cmpl.get();
 		if(clm != null){
 			clm.startSeekerThread();
+		}
+		if(doFinishUpdate != null){
+			Updater.finishUpdate(doFinishUpdate);
 		}
 		System.out.println("Done. Book, meet new friend!");
 		long nextSaveTime = 0;
@@ -383,7 +471,7 @@ public class BookOfThresholds extends JFrame{
 	protected void processWindowEvent(WindowEvent e) {
 		super.processWindowEvent(e);
 		if (e.getID() == WindowEvent.WINDOW_CLOSING) {
-			super.setVisible(false);
+			super.dispose();
 			shutdownInitiated = true;
 			buildListModel.notifyChange();
 		}

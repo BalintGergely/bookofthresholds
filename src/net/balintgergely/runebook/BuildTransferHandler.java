@@ -18,8 +18,8 @@ import javax.swing.ListSelectionModel;
 import javax.swing.TransferHandler;
 
 class BuildTransferHandler extends TransferHandler {
-	public static final DataFlavor BUILD_FLAVOR = new DataFlavor(Build.class, "Rune Book Page");
-	private static final DataFlavor[] SUPPORTED =  new DataFlavor[]{BUILD_FLAVOR,DataFlavor.imageFlavor,DataFlavor.stringFlavor};
+	private static final DataFlavor PRIVATE_FLAVOR = new DataFlavor(BuildTransferable.class, "Rune Book Page");
+	private static final DataFlavor[] SUPPORTED =  new DataFlavor[]{PRIVATE_FLAVOR,DataFlavor.imageFlavor,DataFlavor.stringFlavor};
 	private static final long serialVersionUID = 1L;
 	private final BookOfThresholds bot;
 	private BuildIcon buildIcon = new BuildIcon(false, null);
@@ -34,16 +34,11 @@ class BuildTransferHandler extends TransferHandler {
 			return false;
 		}
 		Build bld;
-		boolean isCreated = false;
-		if(comp instanceof LargeBuildPanel && t instanceof BuildTransferable){
-			BuildTransferable tr = (BuildTransferable)t;
-			if(tr.source instanceof JList && ((JList<?>)tr.source).getModel() instanceof BuildListModel){
-				return false;//Special case: Do not allow dragging from the BuildListModel.
-			}
-		}
+		BuildTransferable tr = null;
 		try{
-			if(t.isDataFlavorSupported(BUILD_FLAVOR)){
-				bld = (Build)t.getTransferData(BUILD_FLAVOR);
+			if(t.isDataFlavorSupported(PRIVATE_FLAVOR)){
+				tr = (BuildTransferable)t.getTransferData(PRIVATE_FLAVOR);
+				bld = tr.build;
 			}else if(t.isDataFlavorSupported(DataFlavor.stringFlavor)){
 				String str = (String)t.getTransferData(DataFlavor.stringFlavor);
 				Rune rn;
@@ -53,7 +48,6 @@ class BuildTransferHandler extends TransferHandler {
 					return false;//Eat
 				}
 				bld = new Build("", null, rn, (byte)0, System.currentTimeMillis());
-				isCreated = true;
 			}else{
 				return false;
 			}
@@ -74,18 +68,15 @@ class BuildTransferHandler extends TransferHandler {
 			if(dropIndex < 0){
 				dropIndex = lstmd.getSize();
 			}
-			if(t instanceof BuildTransferable){
-				BuildTransferable tr = (BuildTransferable)t;
-				if(tr.source == comp){
-					lstmd.moveBuild(tr.build, dropIndex);
-					tr.source = null;
-				}else{
-					lstmd.insertBuild(new Build(tr.build), dropIndex);
-				}
-			}else if(isCreated){
+			if(tr == null){
 				lstmd.insertBuild(bld, dropIndex);
 			}else{
-				lstmd.insertBuild(new Build(bld), dropIndex);
+				if(tr.source == comp){
+					lstmd.moveBuild(bld, dropIndex);
+					tr.source = null;
+				}else{
+					lstmd.insertBuild(new Build(bld), dropIndex);
+				}
 			}
 			return true;
 		}
@@ -98,7 +89,7 @@ class BuildTransferHandler extends TransferHandler {
 	@Override
 	public boolean canImport(TransferSupport supp) {
 		return	canImport(supp.getComponent()) ||
-				supp.isDataFlavorSupported(BUILD_FLAVOR) ||
+				supp.isDataFlavorSupported(PRIVATE_FLAVOR) ||
 				supp.isDataFlavorSupported(DataFlavor.stringFlavor);
 	}
 	public boolean canImport(Component comp){
@@ -161,16 +152,7 @@ class BuildTransferHandler extends TransferHandler {
 		return tr;
 	}
 	@Override
-	protected void exportDone(JComponent source, Transferable data, int action) {
-		BuildTransferable bt = (BuildTransferable)data;
-		if(bt.source == source && action == MOVE && source instanceof JList){
-			ListModel<?> md = ((JList<?>)source).getModel();
-			if(md instanceof BuildListModel){
-				((BuildListModel) md).removeBuild(bt.build);
-			}
-		}
-		bt.source = null;
-	}
+	protected void exportDone(JComponent source, Transferable data, int action) {}
 	private class BuildTransferable implements Transferable{
 		private Build build;
 		private JComponent source;
@@ -203,8 +185,8 @@ class BuildTransferHandler extends TransferHandler {
 			if(flavor.equals(DataFlavor.imageFlavor)){
 				return toImage();
 			}
-			if(flavor.equals(BUILD_FLAVOR)){
-				return build;
+			if(flavor.equals(PRIVATE_FLAVOR)){
+				return this;
 			}
 			throw new UnsupportedFlavorException(flavor);
 		}
