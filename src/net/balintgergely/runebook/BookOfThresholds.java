@@ -7,11 +7,13 @@ import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Image;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -22,7 +24,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,9 +32,13 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import javax.swing.Action;
+import javax.swing.ActionMap;
 import javax.swing.DropMode;
 import javax.swing.ImageIcon;
+import javax.swing.InputMap;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -43,7 +48,9 @@ import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
+import javax.swing.KeyStroke;
 import javax.swing.ToolTipManager;
+import javax.swing.TransferHandler;
 import javax.swing.UIManager;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
@@ -53,6 +60,7 @@ import javax.swing.event.ChangeEvent;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
+import net.balintgergely.util.JSONBodySubscriber;
 
 public class BookOfThresholds extends JFrame{
 	private static final int compareVersion(String a,String b){
@@ -95,7 +103,7 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "1.0.0";
+	private static final String VERSION = "1.1.0";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -119,12 +127,12 @@ public class BookOfThresholds extends JFrame{
 		AssetManager assets;
 		ClientManager clm;
 		System.out.println("Initializing Nexus...");
-		CompletableFuture<HttpResponse<String>> versionCheckFuture;
+		CompletableFuture<HttpResponse<Object>> versionCheckFuture;
 		try{
 			client = HttpClient.newBuilder().sslContext(ClientManager.makeContext()).build();
 			versionCheckFuture = doFinishUpdate != null ? null :
 					client.sendAsync(HttpRequest.newBuilder(new URI(GITHUB+"/version.json")).GET().build(),
-							BodyHandlers.ofString(StandardCharsets.UTF_8));
+							JSONBodySubscriber.HANDLE_UTF8);
 			System.out.println("Confronting Data Dragon...");
 			dragon = new DataDragon(new File("dataDragon.zip"), client);
 			System.out.println("Fetching Runeterran dictionary...");
@@ -151,9 +159,9 @@ public class BookOfThresholds extends JFrame{
 		}
 		if(versionCheckFuture != null){
 			try{
-				HttpResponse<String> response = versionCheckFuture.get(5, TimeUnit.SECONDS);
+				HttpResponse<Object> response = versionCheckFuture.get(5, TimeUnit.SECONDS);
 				if(response.statusCode()/100 == 2){
-					JSMap versionMap = JSON.toJSMap(JSON.parse(response.body()));
+					JSMap versionMap = JSON.toJSMap(response.body());
 					if(compareVersion(VERSION,versionMap.peekString("version", "0")) < 0){
 						switch(JOptionPane.showConfirmDialog(null,
 								assets.z.getObject("update"),
@@ -290,14 +298,14 @@ public class BookOfThresholds extends JFrame{
 	private Rune currentRune;
 	private JPanel mainPanel;
 	private BookOfThresholds(AssetManager assets,ClientManager client,ArrayList<Build> builds){
-		super(assets.z.getString("window"));
+		super(assets.z.getString("window")+" "+VERSION);
 		super.setIconImage(assets.windowIcon);
 		this.assetManager = assets;
 		this.clientManager = client;
 		this.buildListModel = new BuildListModel(builds);
 		mainPanel = new JPanel(new GridBagLayout(),false) {
 			private static final long serialVersionUID = 1L;
-			private BufferedImage temp;
+			private Image temp;
 			@Override
 			protected void paintComponent(Graphics g) {
 				super.paintComponent(g);
@@ -318,9 +326,9 @@ public class BookOfThresholds extends JFrame{
 				}else{
 					imgheight = height;
 				}
-				if(temp == null || temp.getWidth() != imgwidth || temp.getHeight() != imgheight){
-					temp = new BufferedImage(imgwidth, imgheight, BufferedImage.TYPE_INT_ARGB);
-					Graphics2D gr = temp.createGraphics();
+				if(temp == null || temp.getWidth(null) != imgwidth || temp.getHeight(null) != imgheight){
+					temp = createImage(imgwidth, imgheight);
+					Graphics gr = temp.getGraphics();
 					gr.drawImage(assetManager.background, 0, 0, imgwidth, imgheight, null);
 					gr.dispose();
 				}
@@ -417,9 +425,17 @@ public class BookOfThresholds extends JFrame{
 				mainPanel.add(toolBar,con);
 			}
 			con.gridy = 1;con.weighty = 1;
+			ActionMap buildPanelActionMap;
+			InputMap buildPanelInputMap;
 			{
 				buildPanel = new LargeBuildPanel(assets);
 				buildPanel.setTransferHandler(transferer);
+				buildPanel.setFocusable(true);
+				buildPanelInputMap = buildPanel.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+				buildPanelActionMap = buildPanel.getActionMap();
+				buildPanelActionMap.put(TransferHandler.getCutAction().getValue(Action.NAME),TransferHandler.getCutAction());
+				buildPanelActionMap.put(TransferHandler.getCopyAction().getValue(Action.NAME),TransferHandler.getCopyAction());
+				buildPanelActionMap.put(TransferHandler.getPasteAction().getValue(Action.NAME),TransferHandler.getPasteAction());
 				buildPanel.model.addChangeListener(this::stateChanged);
 				currentRune = buildPanel.getRune();
 				mainPanel.add(buildPanel,con);
@@ -432,7 +448,6 @@ public class BookOfThresholds extends JFrame{
 				aboutButton.setOpaque(false);
 				aboutButton.addActionListener(this::actionPerformed);
 				mainPanel.add(aboutButton,con);
-				//TODO Add mobafire rune link import/export via the Mobafire class.
 			}
 			con.gridx++;con.gridy = 0;con.weightx = 1;con.gridheight = 0;
 			{
@@ -451,6 +466,13 @@ public class BookOfThresholds extends JFrame{
 							rendererLabel.setBorder(isSelected ? selectdBuildBorder : basicBuildBorder);
 							return 	rendererLabel;
 						});
+				InputMap inputMap = list.getInputMap();
+				for(KeyStroke ks : inputMap.allKeys()){
+					Object action = inputMap.get(ks);
+					if(buildPanelActionMap.get(action) != null){
+						buildPanelInputMap.put(ks, action);
+					}
+				}
 				JScrollPane sp = new JScrollPane(list,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 				sp.setBorder(null);
 				sp.setOpaque(false);
@@ -458,6 +480,12 @@ public class BookOfThresholds extends JFrame{
 				mainPanel.add(sp,con);
 			}
 		}
+		super.addWindowFocusListener(new WindowAdapter() {
+			@Override
+			public void windowGainedFocus(WindowEvent e) {
+				buildPanel.requestFocusInWindow();
+			}
+		});
 		super.pack();
 		super.setLocationRelativeTo(null);
 		super.setVisible(true);

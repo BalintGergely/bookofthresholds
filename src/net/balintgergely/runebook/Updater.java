@@ -27,14 +27,23 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
-
+/**
+ * This class encapsulates the self-updating logic of RuneBook.
+ * Upon call of the update() method, it generates a separate Updater.jar file
+ * with only this class file as the main class. It is ran within the current context
+ * and the current JVM is terminated.<br>
+ * The main method within this class handles the logic of
+ * downloading the updated .jar file. Once it is downloaded with a separate temporary name,
+ * the original file is deleted and replaced with it. Then it is launched with the parameter
+ * parameter "-finishUpdate" followed by the absolute path to Updater.jar.<br>
+ * Finally it is the responsibility of the updated application to call
+ * <code>finishUpdate(String)</code> with the parameter path in order to clean up the old Updater.jar.
+ * @author balintgergely
+ */
 public class Updater {private Updater() {}
 	private static final Class<Updater> CLASS = Updater.class;
-	private static final String SHORT_NAME = CLASS.getSimpleName();
-	JFrame frame;
-	JProgressBar progressBar;
-	volatile int progressValue;
 	public static void main(String[] atgs) throws Throwable{
+		final Updater referenceHolder = new Updater();
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){
@@ -59,7 +68,6 @@ public class Updater {private Updater() {}
 		HttpClient client = HttpClient.newBuilder().build();
 		CompletableFuture<HttpResponse<InputStream>> future = client.sendAsync(HttpRequest.newBuilder(uri).GET().build(), BodyHandlers.ofInputStream());
 		DefaultBoundedRangeModel progressBarModel = new DefaultBoundedRangeModel(0, 0, 0, 1);
-		final Updater referenceHolder = new Updater();
 		EventQueue.invokeLater(() -> {
 			JProgressBar progressBar = new JProgressBar(progressBarModel);
 			referenceHolder.progressBar = progressBar;
@@ -126,11 +134,19 @@ public class Updater {private Updater() {}
 			System.exit(1);
 		}
 	}
+	JFrame frame;
+	JProgressBar progressBar;
+	volatile int progressValue;
+	private static final String SHORT_NAME = CLASS.getSimpleName();
 	/**
 	 * Updates the current jar file in which Updater.class is located from the specified source url.
 	 * This procedure involves generating a new jar file containing the updater code,
 	 * running it, exiting the current runtime and restarting it.
 	 * @return Never.
+	 * @param sourceURI The uri to download the updated file from
+	 * @param locale The locale code
+	 * @param windowTitle The title of the window
+	 * @param windowDescription The description of the window
 	 */
 	@SuppressWarnings("javadoc")
 	static void update(String sourceURI,String locale,String windowTitle,String windowDescription) throws Throwable{

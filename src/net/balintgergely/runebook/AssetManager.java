@@ -32,7 +32,12 @@ class AssetManager {
 								JUNGLE = 0x8,
 								SUPPORT = 0x10;
 	final RuneModel runeModel;
+	/**
+	 * Used when directly pasting from Mobafire.
+	 */
+	final RuneModel englishRuneModel;
 	final NavigableMap<String,Champion> champions;
+	final NavigableMap<String,Champion> mobafireChampionMap;
 	BufferedImage windowIcon;
 	BufferedImage iconSprites;
 	BufferedImage background;
@@ -60,22 +65,34 @@ class AssetManager {
 				}
 			}//This might be a bad way to do it. We basically default to system locale if supported by LCU.
 			if(locale == null){
-				locale = "en_GB";//Not even LCU supports the system locale. Default to english.
+				locale = "en_US";//Not even LCU supports the system locale. Default to english.
 			}
 		}
-		try{
-			l = Locale.forLanguageTag(locale.replace('_', '-'));
-		}catch(Exception e){
-			e.printStackTrace();
-			if(l == null){
-				l = Locale.getDefault();
+		boolean isEnglish = locale.equals("en_US");
+		if(isEnglish){
+			l = null;
+		}
+		//This logic is needed for Mobafire. en_US always corresponds to the root bundle.
+		if(l == null){
+			try{
+				l = Locale.forLanguageTag(locale.replace('_', '-'));
+			}catch(Exception e){
+				e.printStackTrace();
+				if(isEnglish){
+					l = Locale.ENGLISH;
+				}else if(l == null){
+					l = Locale.getDefault();
+				}
 			}
 		}
-		this.locale = l;
 		Locale.setDefault(l);
-		z = (PropertyResourceBundle) ResourceBundle.getBundle("locale",l);
+		z = (PropertyResourceBundle) ResourceBundle.getBundle("locale",isEnglish ? Locale.ROOT : l);
 		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/"+locale+"/championFull.json"), true).getJSMap("data");
+		JSMap englishChampionData = isEnglish ? championData : 
+			JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/"+locale+"/champion.json"), true).getJSMap("data");
 		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/"+locale+"/runesReforged.json"), true);
+		this.locale = l;
+		JSList englishRuneData = isEnglish ? null : JSON.asJSList(dragon.fetchObject(gameVersion+"/data/en_US/runesReforged.json"), true);
 		HashSet<String> imageCollection = new HashSet<>();
 		JSON.forEachMapEntry(championData, (String key,Object value) -> {
 			if("image".equals(key)){
@@ -87,7 +104,7 @@ class AssetManager {
 				imageCollection.add("img/"+JSON.asString(value, true, null));
 			}
 		},-1);
-		String iconPath = gameVersion+"/img/spell/"+championData.getJSMap("Yuumi").getJSList("spells").getJSMap(3).getJSMap("image").getString("full");
+		String iconPath = gameVersion+"/img/spell/"+championData.getDeep("Yuumi","spells",3,"image","full");
 		imageCollection.add(iconPath);
 		dragon.batchPreload(imageCollection);
 		{//Rune Book? Book with power? Why not? Also the reason we need championFull.json which is kinda big. In the future we can improve on this.
@@ -95,17 +112,24 @@ class AssetManager {
 			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
 			windowIcon = windIc.getSubimage(0, hy, hx, hy);
 		}
-		runeModel = new RuneModel(runeData, (String str) -> (BufferedImage)dragon.fetchObject("img/"+str), this);
+		runeModel = new RuneModel(runeData, (String str) -> (BufferedImage)dragon.fetchObject("img/"+str), z);
+		//Additionally to a localized rune model, we need an english variant just for Mobafire insertion.
+		englishRuneModel = isEnglish ? runeModel : 
+			new RuneModel(englishRuneData, null, (PropertyResourceBundle) ResourceBundle.getBundle("locale",Locale.ROOT));
 		TreeMap<String,Champion> champ = new TreeMap<>();
+		TreeMap<String,Champion> engChamp = new TreeMap<>();
 		for(Entry<String,Object> entry : championData.map.entrySet()){
-			String name = entry.getKey();
+			String key = entry.getKey();
 			JSMap champion = JSON.asJSMap(entry.getValue(),true);
 			JSMap image = champion.getJSMap("image");
-			champ.put(name,new Champion(name,champion.getString("name"),
+			Champion ch = new Champion(key,champion.getString("name"),
 					(BufferedImage)dragon.fetchObject(gameVersion+"/img/sprite/"+image.getString("sprite")),
-					image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h")));
+					image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h"));
+			engChamp.put(englishChampionData.getJSMap(key).getString("name").toUpperCase(Locale.ROOT),ch);
+			champ.put(key,ch);
 		}
 		champions = Collections.unmodifiableNavigableMap(champ);
+		mobafireChampionMap = Collections.unmodifiableNavigableMap(engChamp);
 		iconSprites = loadImageWithHash("icons.png",491867024l);//Absolutely NO tampering please!
 		background = loadImageWithHash("background.png",1433901601l);
 	}

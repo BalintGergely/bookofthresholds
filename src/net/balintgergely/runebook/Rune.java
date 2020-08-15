@@ -1,10 +1,10 @@
 package net.balintgergely.runebook;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.ConcurrentModificationException;
 import java.util.List;
+import java.util.Objects;
 
 import net.balintgergely.runebook.RuneModel.Path;
 import net.balintgergely.runebook.RuneModel.Runestone;
@@ -13,7 +13,7 @@ import net.balintgergely.runebook.RuneModel.Stone;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 
-public final class Rune implements Comparator<Stone>{
+public final class Rune{
 	public final RuneModel model;
 	public final Path primaryPath;
 	public final Path secondaryPath;
@@ -22,11 +22,12 @@ public final class Rune implements Comparator<Stone>{
 	public Rune(RuneModel model,Path primaryPath,Path secondaryPath,Collection<Stone> stoneCollection){
 		int inPrimary = 0,inSecondary = 0;
 		int count = 0;
+		boolean primaryPathFound = false,secondaryPathFound = false;
 		boolean pathLocked = primaryPath != null || secondaryPath != null;
 		Stone[] stoneArray = new Stone[stoneCollection.size()];
 		for(Stone stone : stoneCollection){
-			stoneArray[count++] = stone;
 			if(stone instanceof Runestone){
+				stoneArray[count++] = stone;
 				Runestone rst = (Runestone)stone;
 				Path pt = rst.path;
 				if(model == null){
@@ -57,15 +58,41 @@ public final class Rune implements Comparator<Stone>{
 						int ct = inPrimary;
 						inPrimary = inSecondary;
 						inSecondary = ct;
+						if(primaryPathFound != secondaryPathFound){
+							primaryPathFound = secondaryPathFound;
+							secondaryPathFound = !primaryPathFound;
+						}
 					}
 					pathLocked = true;//pt == primaryPath and it should stay that way.
 				}
 			}else if(stone instanceof Statstone){
+				stoneArray[count++] = stone;
 				RuneModel lm = ((Statstone)stone).model;
 				if(model == null){
 					model = lm;
 				}else if(model != lm){
 					throw new IllegalArgumentException("Model mismatch!");
+				}
+			}else if(stone instanceof Path){
+				Path pt = (Path)stone;
+				if(pt == primaryPath){
+					if(primaryPathFound){
+						throw new IllegalArgumentException("Duplicate stone: "+pt.key);
+					}
+					primaryPathFound = true;
+				}else if(pt == secondaryPath){
+					if(secondaryPathFound){
+						throw new IllegalArgumentException("Duplicate stone: "+pt.key);
+					}
+					secondaryPathFound = true;
+				}else if(primaryPath == null){
+					primaryPath = pt;
+					primaryPathFound = true;
+				}else if(secondaryPath == null){
+					secondaryPath = pt;
+					secondaryPathFound = true;
+				}else{
+					throw new IllegalArgumentException("Three paths not supported!");
 				}
 			}else{
 				throw new IllegalArgumentException("Unsupported stone type!");
@@ -75,7 +102,7 @@ public final class Rune implements Comparator<Stone>{
 			throw new IllegalArgumentException("Unable to resolve model!");
 		}
 		if(count != stoneArray.length){
-			throw new ConcurrentModificationException();
+			stoneArray = Arrays.copyOf(stoneArray, count);
 		}
 		if(!pathLocked && inSecondary > 2){
 			this.primaryPath = secondaryPath;
@@ -94,8 +121,8 @@ public final class Rune implements Comparator<Stone>{
 		}
 		if((secondaryPath != null && model != secondaryPath.model) || (primaryPath != null && model != primaryPath.model)){
 			throw new IllegalArgumentException("Model mismatch!");
-		}//Order as follows: Keystone, Alpha1,Alpha2,Alpha3,Bravo1,Bravo2, Finally statstones in their sorting assist order.
-		Arrays.sort(stoneArray, this);//This will throw a slot conflict if multiple stones fill the same slot.
+		}//Order as follows: Keystone, Primary1,Primary2,Primary3,Secondary1,Secondary2,Finally statstones ordered by their slot.
+		Arrays.sort(stoneArray, this::compare);//This will throw a slot conflict exception if multiple stones fill the same slot.
 		int statSlot = 0;
 		int statSlotCount = model.getStatSlotCount();
 		for(int i = inPrimary+inSecondary;i < count;i++){
@@ -118,6 +145,10 @@ public final class Rune implements Comparator<Stone>{
 		this.stoneList = stoneList;
 		this.isComplete = true;
 	}
+	/**
+	 * Creates a new rune that is accepted by the Riot simulation server and contains all
+	 * stones this rune does. Does nothing if this rune is already accepted.
+	 */
 	public Rune fix(){
 		if(isComplete){
 			return this;
@@ -182,6 +213,21 @@ public final class Rune implements Comparator<Stone>{
 			stones[offset+i] = model.getStatstone(i, 0);
 		}
 		return new Rune(primary, secondary, List.of(stones));
+	}
+	/**
+	 * Translates this rune to another rune model. Throws an exception if unable to.
+	 */
+	public Rune translate(RuneModel newModel){
+		if(newModel == model){
+			return this;
+		}
+		Path newPrimary = primaryPath == null ? null : (Path)Objects.requireNonNull(newModel.stoneMap.get(primaryPath.id));
+		Path newSecondary = secondaryPath == null ? null : (Path)Objects.requireNonNull(newModel.stoneMap.get(secondaryPath.id));
+		ArrayList<Stone> newStoneList = new ArrayList<>(stoneList.size());
+		for(Stone st : stoneList){
+			newStoneList.add(Objects.requireNonNull(newModel.stoneMap.get(st.id)));
+		}
+		return new Rune(newModel, newPrimary, newSecondary, newStoneList);
 	}
 	public int statStoneOffset(){
 		int i = stoneList.size();
@@ -316,8 +362,7 @@ public final class Rune implements Comparator<Stone>{
 		}
 		return false;
 	}
-	@Override
-	public int compare(Stone o1, Stone o2) {
+	private int compare(Stone o1, Stone o2) {
 		if(o1 instanceof Runestone){
 			if(o2 instanceof Runestone){
 				Runestone s1 = (Runestone)o1;

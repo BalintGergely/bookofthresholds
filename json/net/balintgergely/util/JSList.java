@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 
 public final class JSList implements Iterable<Object>{
 	public static final JSList EMPTY_LIST = new JSList(List.of());
@@ -120,10 +121,39 @@ public final class JSList implements Iterable<Object>{
 	public <E> E get(int key){
 		return (E)list.get(key);
 	}
+	public <E> E getDeep(int key,Object... keys){
+		E e = peek(key);
+		for(Object o : keys){
+			if(e instanceof JSList){
+				e = ((JSList)e).get(JSON.asInt(o, true, -1));
+			}else if(e instanceof JSMap){
+				e = ((JSMap)e).get(JSON.asString(o, true, null));
+			}else{
+				throw new NoSuchElementException();
+			}
+		}
+		return e;
+	}
 	public <E> E peek(int key,E valueIfAbsent){
 		E e = peek(key);
 		if(e == null){
 			return valueIfAbsent;
+		}
+		return e;
+	}
+	public <E> E peekDeep(int key,Object... keys){
+		E e = peek(key);
+		for(Object o : keys){
+			if(e == null){
+				return null;
+			}else if(e instanceof JSList){
+				e = ((JSList)e).peek(JSON.asInt(o, false, -1));
+			}else if(e instanceof JSMap){
+				String str = JSON.asString(0, false, null);
+				e = str == null ? null : ((JSMap)e).peek(str);
+			}else{
+				return null;
+			}
 		}
 		return e;
 	}

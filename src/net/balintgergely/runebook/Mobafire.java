@@ -1,13 +1,26 @@
 package net.balintgergely.runebook;
 
 import java.util.ArrayList;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import net.balintgergely.runebook.RuneModel.Path;
 import net.balintgergely.runebook.RuneModel.Runestone;
 import net.balintgergely.runebook.RuneModel.Stone;
 import net.balintgergely.runebook.RuneModel.Statstone;
 
-public final class Mobafire {private Mobafire(){}
+public final class Mobafire {
+	/**
+	 * You can Ctrl+A then Ctrl+C a guide in Mobafire and this pattern will recognize it.
+	 */
+	private static final Pattern PAGE_PATTERN =
+Pattern.compile("^(?<champion>[a-zA-Z ]*) BUILD GUIDE.*^RUNES:(?<name>[^\\n]*)?$(?<build>.*)^SPELLS:",Pattern.DOTALL | Pattern.MULTILINE);
+	/**
+	 * Mobafire rune builder links are recognized by this pattern.
+	 */
+	private static final Pattern LINK_PATTERN = Pattern.compile("#&rune=(?<code>[:0-9a-zA-Z]*)",Pattern.MULTILINE);
+	private Mobafire(){}
 	/**
 	 * Oh my god why does this exist and why does this make zero sense?
 	 * Why could they not have used the original system?
@@ -111,58 +124,77 @@ public final class Mobafire {private Mobafire(){}
 	/**
 	 * Converts the specified mobafire rune builder url to a list of rune stones.
 	 */
-	public static Rune resolveLink(RuneModel model,String url){
-		int splix = url.lastIndexOf("rune=");
-		if(splix >= 0){
-			url = url.substring(splix+5);
-		}
-		String[] parts = url.split(":");
-		int[] currentMapping = ID_MAP;
-		ArrayList<Stone> stoneList = new ArrayList<>();
-		boolean keystoneMissing = true;
-		Path alpha = null,bravo = null;
-		main: for(String str : parts){
-			if(!str.isBlank()){
-				str = str.toLowerCase().strip();
-				int len = str.length();
-				for(int i = 0;i < len;i++){
-					if("0123456789".indexOf(str.charAt(i)) < 0){
-						switch(str){
-						case "precision":
-						case "sorcery":
-						case "domination":
-						case "inspiration":
-						case "resolve":Path pt = model.pathForName(str);
-							if(pt != null){
-								if(keystoneMissing){
-									alpha = bravo;
+	public static Build resolveBuild(AssetManager mgr,String data){
+		Matcher mt;
+		if((mt = LINK_PATTERN.matcher(data)).find()){
+			String[] parts = mt.group("code").split(":");
+			int[] currentMapping = ID_MAP;
+			ArrayList<Stone> stoneList = new ArrayList<>();
+			boolean keystoneMissing = true;
+			Path alpha = null,bravo = null;
+			main: for(String str : parts){
+				if(!str.isBlank()){
+					str = str.toLowerCase().strip();
+					int len = str.length();
+					for(int i = 0;i < len;i++){
+						if("0123456789".indexOf(str.charAt(i)) < 0){
+							switch(str){
+							case "precision":
+							case "sorcery":
+							case "domination":
+							case "inspiration":
+							case "resolve":Path pt = mgr.runeModel.pathForKey(str);
+								if(pt != null){
+									if(keystoneMissing){
+										alpha = bravo;
+									}
+									bravo = pt;
 								}
-								bravo = pt;
+								currentMapping = ID_MAP;continue main;
+							case "shards":currentMapping = STAT_ID_MAP;continue main;
+							default:continue main;
 							}
-							currentMapping = ID_MAP;continue main;
-						case "shards":currentMapping = STAT_ID_MAP;continue main;
-						default:continue main;
 						}
 					}
-				}
-				if(len < 3){
-					int value = Integer.parseInt(str);
-					for(int i = 0;i < currentMapping.length;i += 2){
-						if(currentMapping[i] == value){
-							Stone st = model.fullMap.get(currentMapping[i+1]);
-							if(st != null){
-								if(st instanceof Runestone && ((Runestone)st).slot == 0){
-									keystoneMissing = false;
-									alpha = ((Runestone)st).path;
+					if(len < 3){
+						int value = Integer.parseInt(str);
+						for(int i = 0;i < currentMapping.length;i += 2){
+							if(currentMapping[i] == value){
+								Stone st = mgr.runeModel.stoneMap.get(currentMapping[i+1]);
+								if(st != null){
+									if(st instanceof Runestone && ((Runestone)st).slot == 0){
+										keystoneMissing = false;
+										alpha = ((Runestone)st).path;
+									}
+									stoneList.add(st);
 								}
-								stoneList.add(st);
 							}
 						}
 					}
 				}
 			}
+			return new Build("Mobafire Import", null, new Rune(mgr.runeModel, alpha, bravo, stoneList), (byte)0, System.currentTimeMillis());
+		}else if((mt = PAGE_PATTERN.matcher(data)).find()){
+			String chp = mt.group("champion");
+			String nm = mt.group("name");
+			String rn = mt.group("build");
+			if(rn == null){
+				return null;
+			}
+			Rune rune;
+			try{
+				rune = mgr.englishRuneModel.parseRune(rn);
+			}catch(Exception e){
+				return null;
+			}
+			return new Build(nm == null || nm.isBlank() ? "Mobafire Import" : nm.trim(),
+					chp == null || chp.isBlank() ? null : mgr.mobafireChampionMap.get(chp.toUpperCase(Locale.ROOT)),
+					rune.translate(mgr.runeModel),
+					(byte)0,
+					System.currentTimeMillis()
+					);
 		}
-		return new Rune(model, alpha, bravo, stoneList);
+		return null;
 	}
 	public static String toURL(Rune rune){
 		StringBuilder builder = new StringBuilder("https://www.mobafire.com/league-of-legends/rune-page-planner#&rune=");

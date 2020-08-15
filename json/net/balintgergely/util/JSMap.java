@@ -86,10 +86,39 @@ public final class JSMap{
 		}
 		return e;
 	}
+	public <E> E getDeep(Object key,Object... keys){
+		E e = peek(key);
+		for(Object o : keys){
+			if(e instanceof JSList){
+				e = ((JSList)e).get(JSON.asInt(o, true, -1));
+			}else if(e instanceof JSMap){
+				e = ((JSMap)e).get(JSON.asString(o, true, null));
+			}else{
+				throw new NoSuchElementException();
+			}
+		}
+		return e;
+	}
 	public <E> E peek(Object key,E valueIfAbsent){
 		E e = peek(key);
 		if(e == null){
 			return valueIfAbsent;
+		}
+		return e;
+	}
+	public <E> E peekDeep(Object key,Object... keys){
+		E e = peek(key);
+		for(Object o : keys){
+			if(e == null){
+				return null;
+			}else if(e instanceof JSList){
+				e = ((JSList)e).peek(JSON.asInt(o, false, -1));
+			}else if(e instanceof JSMap){
+				String str = JSON.asString(0, false, null);
+				e = str == null ? null : ((JSMap)e).peek(str);
+			}else{
+				return null;
+			}
 		}
 		return e;
 	}

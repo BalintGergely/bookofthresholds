@@ -99,7 +99,6 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		super(null, false);
 		super.setOpaque(false);
 		super.setBackground(new Color(0,true));
-		super.setFocusable(true);
 		model = new RuneButtonGroup(assetManager.runeModel);
 		GroupLayout g = new GroupLayout(this);
 		super.setLayout(g);
@@ -315,7 +314,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 				int size = getPreferredDim();
 				int offset = (size-id.getWidth(null))/2;
 				boolean selected = super.getModel().isSelected();
-				boolean rollover = super.getModel().isRollover() || super.isFocusOwner();
+				boolean rollover = super.getModel().isRollover();
 				boolean armed = super.getModel().isArmed();
 				if(selected || armed){
 					Color color = Color.WHITE;

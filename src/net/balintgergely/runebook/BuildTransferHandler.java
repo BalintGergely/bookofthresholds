@@ -1,6 +1,7 @@
 package net.balintgergely.runebook;
 
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Image;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -11,6 +12,7 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 
 import javax.swing.Icon;
+import javax.swing.ImageIcon;
 import javax.swing.JComponent;
 import javax.swing.JList;
 import javax.swing.ListModel;
@@ -22,7 +24,6 @@ class BuildTransferHandler extends TransferHandler {
 	private static final DataFlavor[] SUPPORTED =  new DataFlavor[]{PRIVATE_FLAVOR,DataFlavor.imageFlavor,DataFlavor.stringFlavor};
 	private static final long serialVersionUID = 1L;
 	private final BookOfThresholds bot;
-	private BuildIcon buildIcon = new BuildIcon(false, null);
 	BuildTransferHandler(BookOfThresholds bot){
 		this.bot = bot;
 	}
@@ -30,9 +31,6 @@ class BuildTransferHandler extends TransferHandler {
 	public boolean importData(TransferSupport supp) {
 		Component comp = supp.getComponent();
 		Transferable t = supp.getTransferable();
-		if(!canImport(comp)){
-			return false;
-		}
 		Build bld;
 		BuildTransferable tr = null;
 		try{
@@ -41,18 +39,15 @@ class BuildTransferHandler extends TransferHandler {
 				bld = tr.build;
 			}else if(t.isDataFlavorSupported(DataFlavor.stringFlavor)){
 				String str = (String)t.getTransferData(DataFlavor.stringFlavor);
-				Rune rn;
-				try{
-					rn = Mobafire.resolveLink(bot.getAssetManager().runeModel, str);
-				}catch(Throwable x){
-					return false;//Eat
-				}
-				bld = new Build("", null, rn, (byte)0, System.currentTimeMillis());
+				bld = Mobafire.resolveBuild(bot.getAssetManager(), str);
 			}else{
 				return false;
 			}
 		}catch(Throwable e) {
 			e.printStackTrace();
+			return false;
+		}
+		if(bld == null){
 			return false;
 		}
 		if(comp instanceof JList){
@@ -80,11 +75,8 @@ class BuildTransferHandler extends TransferHandler {
 			}
 			return true;
 		}
-		if(comp instanceof LargeBuildPanel){
-			bot.applyBuild(bld);
-			return true;
-		}
-		return false;
+		bot.applyBuild(bld);
+		return true;
 	}
 	@Override
 	public boolean canImport(TransferSupport supp) {
@@ -93,13 +85,7 @@ class BuildTransferHandler extends TransferHandler {
 				supp.isDataFlavorSupported(DataFlavor.stringFlavor);
 	}
 	public boolean canImport(Component comp){
-		if(comp instanceof JList){
-			ListModel<?> md = ((JList<?>)comp).getModel();
-			if(md instanceof BuildListModel){
-				return true;
-			}
-		}
-		return comp instanceof LargeBuildPanel;
+		return true;
 	}
 	@Override
 	public int getSourceActions(JComponent c) {
@@ -117,18 +103,15 @@ class BuildTransferHandler extends TransferHandler {
 	@Override
 	public Icon getVisualRepresentation(Transferable t) {
 		if(t instanceof BuildTransferable){
-			Build bld = ((BuildTransferable)t).build;
-			buildIcon.setGridVariant((bld.getRoles() | 0x20) == 0);
-			buildIcon.setBuild(bld);
-			return buildIcon;
+			return new ImageIcon(((BuildTransferable)t).toImage());
 		}
 		return null;
 	}
 	@Override
 	protected Transferable createTransferable(JComponent c) {
 		BuildTransferable tr;
-		Point pt = c.getMousePosition();
 		if(c instanceof JList){
+			Point pt = c.getMousePosition();
 			JList<?> list = ((JList<?>)c);
 			ListModel<?> model = list.getModel();
 			ListSelectionModel slm = list.getSelectionModel();
@@ -146,7 +129,12 @@ class BuildTransferHandler extends TransferHandler {
 		}else if(c instanceof LargeBuildPanel){
 			tr = new BuildTransferable(c, bot.createBuild());
 		}else{
-			return null;
+			Container ct = c.getParent();
+			if(ct instanceof JComponent){
+				return createTransferable((JComponent)ct);
+			}else{
+				return null;
+			}
 		}
 		super.setDragImage(tr.toImage());
 		return tr;

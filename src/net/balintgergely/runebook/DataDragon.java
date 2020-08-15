@@ -29,6 +29,7 @@ import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
 
 import net.balintgergely.util.JSON;
+import net.balintgergely.util.JSONBodySubscriber;
 /**
  * Interfaces with and stores data locally from the data dragon api.
  * @author balintgergely
@@ -88,7 +89,7 @@ public class DataDragon {
 					return ImageIO.read(input);
 				}
 			}else if(path.endsWith(".json")){
-				return JSON.freeze(JSON.parse(httpClient.send(httpRequest(path),STRING_BODY_HANDLER).body()));
+				return JSON.freeze(httpClient.send(httpRequest(path),JSONBodySubscriber.HANDLE_UTF8).body());
 			}else{
 				return null;
 			}
@@ -132,9 +133,8 @@ public class DataDragon {
 						}
 					}).toCompletableFuture());
 				}else if(str.endsWith(".json")){
-					dedup.put(str,httpClient.sendAsync(httpRequest(str), STRING_BODY_HANDLER).thenAccept((HttpResponse<String> response) -> {
-						data.put(str, JSON.parse(response.body()));
-					}).toCompletableFuture());
+					dedup.put(str,httpClient.sendAsync(httpRequest(str), JSONBodySubscriber.HANDLE_UTF8)
+							.thenAccept((HttpResponse<Object> response) -> data.put(str, response.body())).toCompletableFuture());
 				}
 			}
 		}

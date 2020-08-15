@@ -6,7 +6,10 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.PropertyResourceBundle;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 import javax.swing.ImageIcon;
@@ -26,30 +29,43 @@ public class RuneModel {
 	public static final int PATH_SIZE = 32,KEYSTONE_SIZE = 48,RUNESTONE_SIZE = 32,STAT_MOD_SIZE = 24;
 	private Path[] paths;
 	private Statstone[] statStones;
-	public final Map<Integer,Stone> fullMap;
+	/**
+	 * A map of all stones contained in this model.
+	 */
+	public final Map<Integer,Stone> stoneMap;
+	/**
+	 * The foundation rune. Contains no stones, but can be forged into any other rune.
+	 */
 	public final Rune foundation;
-	public RuneModel(JSList model,Function<String,BufferedImage> ip,AssetManager mg){
+	public RuneModel(JSList model,Function<String,BufferedImage> ip,PropertyResourceBundle bundle){
 		paths = new Path[model.size()];
 		HashMap<Integer,Stone> fm = new HashMap<>();
+		final BufferedImage replacement;
+		if(ip == null){
+			replacement = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+			ip = s -> replacement;
+		}else{
+			replacement = null;
+		}
 		for(byte i = 0;i < paths.length;i++){
 			JSMap pathModel = model.getJSMap(i);
 			BufferedImage img = ip.apply(pathModel.getString("icon"));
-			Path pt = new Path(i,this,pathModel,ip,img,AssetManager.averagePixels(img),fm);
+			Path pt = new Path(i,this,pathModel,ip,img,img == replacement ? null : AssetManager.averagePixels(img),fm);
 			paths[i] = pt;
 			fm.put(pt.id, pt);
 		}
 		statStones = new Statstone[]{//Icon image			Name		Id	SA	MIN	MAX
-				sts(0, ip, "StatModsHealthScalingIcon.png",	mg.z.getString("statHp"),	5001, 2, 2, 0),
-				sts(1, ip, "StatModsArmorIcon.png",			mg.z.getString("statAr"),	5002, 1, 2, 1),
-				sts(2, ip, "StatModsMagicResIcon.png",		mg.z.getString("statMr"),	5003, 1, 2, 2),
-				sts(3, ip, "StatModsAttackSpeedIcon.png",	mg.z.getString("statAr"),	5005, 0, 0, 1),
-				sts(4, ip, "StatModsCDRScalingIcon.png",	mg.z.getString("statCd"),	5007, 0, 0, 2),
-				sts(5, ip, "StatModsAdaptiveForceIcon.png",	mg.z.getString("statAf"),	5008, 0, 1, 0),
+				sts(0, ip, "StatModsHealthScalingIcon.png", bundle.getString("statHp"),	5001, 2, 2, 0),
+				sts(1, ip, "StatModsArmorIcon.png",			bundle.getString("statAr"),	5002, 1, 2, 1),
+				sts(2, ip, "StatModsMagicResIcon.png",		bundle.getString("statMr"),	5003, 1, 2, 2),
+				sts(3, ip, "StatModsAttackSpeedIcon.png",	bundle.getString("statAr"),	5005, 0, 0, 1),
+				sts(4, ip, "StatModsCDRScalingIcon.png",	bundle.getString("statCd"),	5007, 0, 0, 2),
+				sts(5, ip, "StatModsAdaptiveForceIcon.png",	bundle.getString("statAf"),	5008, 0, 1, 0),
 		};
 		for(Statstone st : statStones){
 			fm.put(st.id, st);
 		}
-		fullMap = Collections.unmodifiableMap(fm);//Faster.
+		stoneMap = Collections.unmodifiableMap(fm);//Faster.
 		foundation = new Rune(this, null, null, Collections.emptyList());
 	}
 	private Statstone sts(int statId,
@@ -68,9 +84,9 @@ public class RuneModel {
 	public Path getPath(int path){
 		return paths[path];
 	}
-	public Path pathForName(String name){
+	public Path pathForKey(String name){
 		for(Path pt : paths){
-			if(pt.getDescription().equalsIgnoreCase(name)){
+			if(pt.key.equalsIgnoreCase(name)){
 				return pt;
 			}
 		}
@@ -185,17 +201,31 @@ public class RuneModel {
 		}
 	}
 	private static Image resize(int dim,Image img){
-		return img.getScaledInstance(dim, dim, Image.SCALE_SMOOTH);
+		return img == null ? null : img.getScaledInstance(dim, dim, Image.SCALE_SMOOTH);
 	}
 	public Rune parseRune(JSMap map){
 		JSList perks = JSON.toJSList(map.peek("selectedPerkIds"));
 		ArrayList<Stone> stoneList = new ArrayList<>(perks.size());
-		Path primaryPath = (Path)fullMap.get(map.peekInt("primaryStyleId"));
-		Path secondaryPath = (Path)fullMap.get(map.peekInt("subStyleId"));
+		Path primaryPath = (Path)stoneMap.get(map.peekInt("primaryStyleId"));
+		Path secondaryPath = (Path)stoneMap.get(map.peekInt("subStyleId"));
 		int len = perks.size();
 		for(int i = 0;i < len;i++){
-			stoneList.add(fullMap.get(perks.getInt(i)));
+			stoneList.add(stoneMap.get(perks.getInt(i)));
 		}
 		return new Rune(this, primaryPath, secondaryPath, stoneList);
+	}
+	public Rune parseRune(String data){
+		data = data.toLowerCase(Locale.ROOT);
+		TreeMap<Integer,Stone> stones = new TreeMap<>();
+		for(Stone st : stoneMap.values()){//Link stones to their index of occurrence.
+			String word = st.getDescription().toLowerCase(Locale.ROOT);
+			int index = data.indexOf(word);
+			int length = word.length();
+			while(index >= 0){
+				stones.putIfAbsent(index, st);
+				index = data.indexOf(word, index+length);
+			}
+		}
+		return new Rune(this, null, null, stones.values());
 	}
 }

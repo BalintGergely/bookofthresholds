@@ -9,7 +9,6 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublisher;
-import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandler;
 import java.net.http.HttpResponse.BodyHandlers;
@@ -46,6 +45,8 @@ import javax.net.ssl.X509TrustManager;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
+import net.balintgergely.util.JSONBodyPublishing;
+import net.balintgergely.util.JSONBodySubscriber;
 
 public class ClientManager implements WebSocket.Listener{
 	/*
@@ -147,7 +148,7 @@ public class ClientManager implements WebSocket.Listener{
 			"q3DdeE+M+BUJrhWorsAQCgUyZO166SAtKXKLIcxa+ddC49NvMQPJyzm3V+2b1roP\r\n" + 
 			"SvD2WV8gRYUnGmy/N0+u6ANq5EsbhZ548zZc+BI4upsWChTLyxt2RxR7+uGlS1+5\r\n" + 
 			"EcGfKZ+g024k/J32XP4hdho7WYAS2xMiV83CfLR/MNi8oSMaVQTdKD8cpgiWJk3L\r\n" + 
-			"XWehWA==\r\n" + "-----END CERTIFICATE-----\r\n";
+			"XWehWA==\r\n-----END CERTIFICATE-----\r\n";
 	//private static final BodyPublisher EMPTY = BodyPublishers.ofString("{}", StandardCharsets.UTF_8);
 	private static final Throwable LOL_NOT_RUNNING = new Throwable("League of Legends is not running.",null,false,false){
 		private static final long serialVersionUID = 1L;
@@ -159,13 +160,13 @@ public class ClientManager implements WebSocket.Listener{
 	private static final Pattern	PASSWORD_PATTERN = Pattern.compile("--remoting-auth-token=(?<group>[^ \\\"]+)"),
 									PORT_PATTERN = Pattern.compile("--app-port=(?<group>\\d+)");
 	private static final BodyHandler<String> STRING_BODY_HANDLER = BodyHandlers.ofString();
-	private static final Function<HttpResponse<String>,Object> TO_JSON = (HttpResponse<String> response) -> {
-		String body = response.body();
+	private static final BodyHandler<Void> DISCARD = BodyHandlers.discarding();
+	private static <E> E bodyOf(HttpResponse<E> response){
 		if(response.statusCode()/100 != 2){
 			throw new RuntimeException(response.uri()+" Received status code: "+response.statusCode());
 		}
-		return body == null || body.isBlank() ? null : JSON.parse(response.body());
-	};
+		return response.body();
+	}
 	private static final CompletionStage<Object> COMPLETED_STAGE = CompletableFuture.completedStage(null);
 	public static final int STATE_NOT_KNOWN = 0,
 							STATE_NOT_RUNNING = 1,
@@ -303,9 +304,7 @@ public class ClientManager implements WebSocket.Listener{
 	 */
 	@SuppressWarnings("unchecked")
 	public CompletionStage<Object> exportRune(final Rune rune,final String name){
-		BodyPublisher runeExport = BodyPublishers.ofString(rune.toJSMap()
-				.put("name", name, "current", true)
-				.toString(),StandardCharsets.UTF_8);
+		BodyPublisher runeExport = JSONBodyPublishing.publish(rune.toJSMap().put("name", name, "current", Boolean.TRUE));
 		/*
 		 * Listening to page changes via WebSocket and using cached page information
 		 * produces a noticeable increase in the speed of exports which is kind of important.
@@ -391,9 +390,8 @@ public class ClientManager implements WebSocket.Listener{
 		ls.run();
 	}
 	private CompletableFuture<? extends Object> fetchLocale0(){
-		return localeString = client.sendAsync(conref.apply("riotclient/get_region_locale").GET().build(), STRING_BODY_HANDLER)
-				.thenApply(TO_JSON)
-				.thenApply(o -> JSON.toJSMap(o).peekString("locale"));
+		return localeString = client.sendAsync(conref.apply("riotclient/get_region_locale").GET().build(), JSONBodySubscriber.HANDLE_UTF8)
+				.thenApply(o -> JSON.toJSMap(bodyOf(o)).peekString("locale"));
 	}
 	private void fireChange(){
 		Runnable ls = changeListener;
@@ -471,9 +469,9 @@ public class ClientManager implements WebSocket.Listener{
 				nf = (CompletableFuture<WebSocket>)fetchLocale0();
 			}
 			CompletableFuture<WebSocket> mainFuture = 
-						client.sendAsync(conref.apply("lol-summoner/v1/current-summoner").GET().build(), STRING_BODY_HANDLER)
-						.thenApply(TO_JSON)
+						client.sendAsync(conref.apply("lol-summoner/v1/current-summoner").GET().build(), DISCARD)
 						.thenCompose(o -> {
+							bodyOf(o);
 							return client.newWebSocketBuilder().header("Authorization", authString)
 							.buildAsync(uri("wss://"+address+":"+port), this);
 						});
@@ -525,12 +523,12 @@ public class ClientManager implements WebSocket.Listener{
 				.thenCompose(ws -> ws.sendText("[5, \"OnJsonApiEvent_lol-perks_v1_inventory\"]", true))
 				.thenCompose(ws -> {
 					CompletableFuture<Void> pages =
-							client.sendAsync(conref.apply("lol-perks/v1/pages").GET().build(), STRING_BODY_HANDLER)
-							.thenApply(TO_JSON)
+							client.sendAsync(conref.apply("lol-perks/v1/pages").GET().build(), JSONBodySubscriber.HANDLE_UTF8)
+							.thenApply(ClientManager::bodyOf)
 							.thenAccept(this::updatePages);
 					CompletableFuture<Void> inventory =
-							client.sendAsync(conref.apply("lol-perks/v1/inventory").GET().build(), STRING_BODY_HANDLER)
-							.thenApply(TO_JSON)
+							client.sendAsync(conref.apply("lol-perks/v1/inventory").GET().build(), JSONBodySubscriber.HANDLE_UTF8)
+							.thenApply(ClientManager::bodyOf)
 							.thenAccept(this::updateInventory);
 					return pages.thenCombine(inventory, (Object a,Object b) -> {ws.request(request);return ws;})
 							.exceptionallyCompose(th -> {
