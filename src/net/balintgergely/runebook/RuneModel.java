@@ -64,7 +64,7 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 				sts(0, ip, "StatModsHealthScalingIcon.png", bundle.getString("statHp"),	5001, 2, 2, 0),
 				sts(1, ip, "StatModsArmorIcon.png",			bundle.getString("statAr"),	5002, 1, 2, 1),
 				sts(2, ip, "StatModsMagicResIcon.png",		bundle.getString("statMr"),	5003, 1, 2, 2),
-				sts(3, ip, "StatModsAttackSpeedIcon.png",	bundle.getString("statAr"),	5005, 0, 0, 1),
+				sts(3, ip, "StatModsAttackSpeedIcon.png",	bundle.getString("statAs"),	5005, 0, 0, 1),
 				sts(4, ip, "StatModsCDRScalingIcon.png",	bundle.getString("statCd"),	5007, 0, 0, 2),
 				sts(5, ip, "StatModsAdaptiveForceIcon.png",	bundle.getString("statAf"),	5008, 0, 1, 0),
 		};
@@ -264,8 +264,12 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 	public Rune parseRune(String data){
 		data = data.toLowerCase(Locale.ROOT);
 		TreeMap<Integer,Stone> stones = new TreeMap<>();
+		System.out.println(stoneMap.containsKey(5005));
 		for(Stone st : stoneMap.values()){//Link stones to their index of occurrence.
 			String word = st.getDescription().toLowerCase(Locale.ROOT);
+			if(st.id == 5005){
+				System.out.println("Gotcha");
+			}
 			int index = data.indexOf(word);
 			int length = word.length();
 			while(index >= 0){
