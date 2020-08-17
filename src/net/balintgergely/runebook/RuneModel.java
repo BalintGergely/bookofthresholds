@@ -264,12 +264,8 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 	public Rune parseRune(String data){
 		data = data.toLowerCase(Locale.ROOT);
 		TreeMap<Integer,Stone> stones = new TreeMap<>();
-		System.out.println(stoneMap.containsKey(5005));
 		for(Stone st : stoneMap.values()){//Link stones to their index of occurrence.
 			String word = st.getDescription().toLowerCase(Locale.ROOT);
-			if(st.id == 5005){
-				System.out.println("Gotcha");
-			}
 			int index = data.indexOf(word);
 			int length = word.length();
 			while(index >= 0){
