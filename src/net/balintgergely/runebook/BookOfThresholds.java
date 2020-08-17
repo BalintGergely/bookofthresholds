@@ -12,7 +12,6 @@ import java.awt.GridBagLayout;
 import java.awt.Image;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
-import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
@@ -27,6 +26,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -103,19 +103,26 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "1.1.0";
+	private static final String VERSION = "1.2.0";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){}//Eat
 		int argIndex = 0;
 		String doFinishUpdate = null;
+		boolean updateOnly = false;
 		argReadLoop: while(argIndex < atgs.length){
 			String argument = atgs[argIndex++];
 			switch(argument){
 			case "-finishUpdate":
-				if(argIndex < atgs.length){
-					doFinishUpdate = atgs[argIndex++];
+				if(doFinishUpdate == null && argIndex < atgs.length){
+					doFinishUpdate = String.valueOf(atgs[argIndex++]);
+					continue argReadLoop;
+				}
+				break;
+			case "-update":
+				if(!updateOnly){
+					updateOnly = true;
 					continue argReadLoop;
 				}
 				break;
@@ -124,15 +131,18 @@ public class BookOfThresholds extends JFrame{
 		}
 		HttpClient client;
 		DataDragon dragon;
-		AssetManager assets;
+		AssetManager assets = null;
 		ClientManager clm;
 		System.out.println("Initializing Nexus...");
-		CompletableFuture<HttpResponse<Object>> versionCheckFuture;
+		CompletableFuture<HttpResponse<Object>> versionCheckFuture = null;
 		try{
 			client = HttpClient.newBuilder().sslContext(ClientManager.makeContext()).build();
 			versionCheckFuture = doFinishUpdate != null ? null :
 					client.sendAsync(HttpRequest.newBuilder(new URI(GITHUB+"/version.json")).GET().build(),
 							JSONBodySubscriber.HANDLE_UTF8);
+			if(updateOnly){
+				return;//In an extreme case where some download logic got messed up, we can bypass it.
+			}
 			System.out.println("Confronting Data Dragon...");
 			dragon = new DataDragon(new File("dataDragon.zip"), client);
 			System.out.println("Fetching Runeterran dictionary...");
@@ -156,33 +166,73 @@ public class BookOfThresholds extends JFrame{
 			t.printStackTrace();
 			JOptionPane.showMessageDialog(null, t.getMessage(), "Failed to start Rune Book of Thresholds", JOptionPane.ERROR_MESSAGE);
 			return;
-		}
-		if(versionCheckFuture != null){
-			try{
-				HttpResponse<Object> response = versionCheckFuture.get(5, TimeUnit.SECONDS);
-				if(response.statusCode()/100 == 2){
-					JSMap versionMap = JSON.toJSMap(response.body());
-					if(compareVersion(VERSION,versionMap.peekString("version", "0")) < 0){
-						switch(JOptionPane.showConfirmDialog(null,
-								assets.z.getObject("update"),
-								assets.z.getString("window"),
-								JOptionPane.YES_NO_OPTION, JOptionPane.PLAIN_MESSAGE, new ImageIcon(assets.windowIcon))){
-						case JOptionPane.NO_OPTION:break;
-						case JOptionPane.YES_OPTION:
-							Updater.update(versionMap.getString("download"),
-									assets.locale.toLanguageTag(), assets.z.getString("window"), assets.z.getString("updating"));
-							//$FALL-THROUGH$
-						default:System.exit(0);return;
+		}finally{
+			if(versionCheckFuture != null){
+				try{
+					HttpResponse<Object> response = updateOnly ? versionCheckFuture.get() : versionCheckFuture.get(5, TimeUnit.SECONDS);
+					if(response.statusCode()/100 == 2){
+						JSMap versionMap = JSON.toJSMap(response.body());
+						if(compareVersion(VERSION,versionMap.peekString("version", "0")) < 0){
+							if(assets == null){//We might be on a bugged version. Try to recover without asking.
+								System.out.println("Update in progress. "+(updateOnly ? "Requested by user." : "Triggered by loading error."));
+								Updater.update(versionMap.getString("download"),
+										Locale.getDefault().toLanguageTag(), "NoooNOOO!", "We can fix this!");
+								System.exit(1);
+							}else{
+								switch(JOptionPane.showConfirmDialog(null,
+										assets.z.getObject("update"),
+										assets.z.getString("window"),
+										JOptionPane.YES_NO_OPTION, JOptionPane.PLAIN_MESSAGE, new ImageIcon(assets.windowIcon))){
+								case JOptionPane.NO_OPTION:break;
+								case JOptionPane.YES_OPTION:
+									Updater.update(versionMap.getString("download"),
+											assets.locale.toLanguageTag(), assets.z.getString("window"), assets.z.getString("updating"));
+									//$FALL-THROUGH$
+								default:System.exit(0);
+								}
+							}
+						}else if(updateOnly){
+							System.out.println("Rune Book appears to be on the latest version.");
+						}else{
+							System.out.println("Version check successfull.");
 						}
+					}else if(updateOnly){
+						System.out.println("Got an unexpected status code: "+response.statusCode());
 					}
+				}catch(Throwable th){
+					th.printStackTrace();
 				}
-			}catch(Throwable th){
-				th.printStackTrace();
 			}
 		}
 		if(clm == null){
 			JOptionPane.showMessageDialog(null, "Rune Book of Thresholds will not be able to export runes.");
 		}
+		/*{//Test code for rune permutations.
+			RuneModel model = assets.runeModel;
+			long totalRuneCount = model.totalPermutationCount;
+			System.out.println("Testing "+totalRuneCount+" permutations...");
+			java.util.Set<List<RuneModel.Stone>> globalPermutationMemory = new java.util.HashSet<>((int)totalRuneCount);
+			for(long a = 0;a < totalRuneCount;a++){
+				if(a == 27){
+					System.out.println("Mark");
+				}
+				Rune init = new Rune(model, a);
+				long b = init.toPermutationCode();
+				if(b != a){
+					System.out.println("Permutation Code mismatch: "+a+" != "+b+" For rune: "+init.toJSMap());
+				}
+				if(!globalPermutationMemory.add(init.stoneList)){
+					System.out.println("Duplicate rune detected: "+init.toJSMap());
+				}
+				if(a % 10000 == 0){
+					System.out.println("Milestone: "+a+"/"+totalRuneCount+" "+init.toJSMap());
+				}
+			}//Note to self: The permutation system somehow ended up being perfect the first time. How is that possible?
+			System.out.println("Encountered: "+globalPermutationMemory.size()+"/"+totalRuneCount);
+			System.out.println("Bit length: "+Long.numberOfTrailingZeros(Long.highestOneBit(totalRuneCount) << 1));
+			System.out.println("Base 36 string: "+Long.toString(totalRuneCount, 36));
+			System.exit(0);
+		}*/
 		CompletableFuture<BookOfThresholds> cmpl = new CompletableFuture<>();
 		{
 			ArrayList<Build> buildList = new ArrayList<Build>(0);
@@ -211,10 +261,11 @@ public class BookOfThresholds extends JFrame{
 			}
 			System.out.println("Initializing window...");
 			final ClientManager clientManager = clm;
+			AssetManager assetProxy = assets;
 			EventQueue.invokeAndWait(() -> {
 				ToolTipManager.sharedInstance().setDismissDelay(Integer.MAX_VALUE);
 				try{
-					cmpl.complete(new BookOfThresholds(assets, clientManager, buildList));
+					cmpl.complete(new BookOfThresholds(assetProxy, clientManager, buildList));
 				}catch(Throwable e){
 					cmpl.completeExceptionally(e);
 				}
@@ -227,7 +278,7 @@ public class BookOfThresholds extends JFrame{
 		if(doFinishUpdate != null){
 			Updater.finishUpdate(doFinishUpdate);
 		}
-		System.out.println("Done. Book, meet new friend!");
+		System.out.println("We can store "+assets.runeModel.totalPermutationCount+" different runes!");
 		long nextSaveTime = 0;
 		CompletableFuture<String> shutdown = null;
 		while(true){

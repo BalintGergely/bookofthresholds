@@ -19,6 +19,20 @@ public final class Rune{
 	public final Path secondaryPath;
 	public final List<Stone> stoneList;
 	public final boolean isComplete;
+	Rune(RuneModel model){
+		this.model = model;
+		this.primaryPath = null;
+		this.secondaryPath = null;
+		this.stoneList = List.of();
+		this.isComplete = false;
+	}
+	private Rune(Path primary,Path secondary,List<Stone> stoneList){
+		this.model = primary.model;
+		this.primaryPath = primary;
+		this.secondaryPath = secondary;
+		this.stoneList = stoneList;
+		this.isComplete = true;
+	}
 	public Rune(RuneModel model,Path primaryPath,Path secondaryPath,Collection<Stone> stoneCollection){
 		int inPrimary = 0,inSecondary = 0;
 		int count = 0;
@@ -138,24 +152,80 @@ public final class Rune{
 		stoneList = List.of(stoneArray);
 		this.model = model;
 	}
-	private Rune(Path primary,Path secondary,List<Stone> stoneList){
-		this.model = primary.model;
-		this.primaryPath = primary;
-		this.secondaryPath = secondary;
-		this.stoneList = stoneList;
+	public Rune(RuneModel model,long permutationCode){
+		if(permutationCode < 0 || permutationCode >= model.totalPermutationCount){
+			throw new IllegalArgumentException();
+		}
+		Path path0 = null;
+		for(Path pt : model){
+			if(pt.totalPermutationCount > permutationCode){
+				path0 = pt;
+				break;
+			}
+			permutationCode -= pt.totalPermutationCount;
+		}
+		this.primaryPath = path0;
+		int primarySlots = path0.getSlotCount();
+		long statModRemainder = permutationCode%model.statModPermutations;
+		permutationCode /= model.statModPermutations;
+		long multiplier = path0.totalPermutationCount/model.statModPermutations;
+		Stone[] stones = new Stone[primarySlots+2+model.getStatSlotCount()];
+		int slot = 0;
+		for(;slot < primarySlots;slot++){
+			multiplier /= path0.getStoneCountInSlot(slot);
+			stones[slot] = path0.getStone(slot, (int)(permutationCode/multiplier));
+			permutationCode %= multiplier;
+		}
+		Path path1 = null;
+		for(Path pt : model){
+			if(pt != path0){
+				if(pt.secondaryPermutationCount > permutationCode){
+					path1 = pt;
+					break;
+				}
+				permutationCode -= pt.secondaryPermutationCount;
+			}
+		}
+		this.secondaryPath = path1;
+		int secondarySlots = path1.getSlotCount();
+		a:for(int a = 1;true;a++){//Iterate all permutations for the second path. Stop when counter reaches zero.
+			int slot0Length = path1.getStoneCountInSlot(a);
+			for(int b = 0;b < slot0Length;b++){
+				for(int c = a+1;c < secondarySlots;c++){
+					int slot1Length = path1.getStoneCountInSlot(c);
+					for(int d = 0;d < slot1Length;d++){
+						if(permutationCode == 0){
+							stones[slot++] = path1.getStone(a, b);
+							stones[slot++] = path1.getStone(c, d);
+							break a;
+						}
+						permutationCode--;
+					}
+				}
+			}
+		}
+		multiplier = model.statModPermutations;
+		int statSlots = model.getStatSlotCount();
+		for(int i = 0;i < statSlots;i++){
+			multiplier /= model.getStatSlotLength(i);
+			stones[slot++] = model.getStatstone(i,(int)(statModRemainder/multiplier));
+			statModRemainder %= multiplier;
+		}
+		this.stoneList = List.of(stones);
 		this.isComplete = true;
+		this.model = model;
 	}
 	/**
 	 * Creates a new rune that is accepted by the Riot simulation server and contains all
-	 * stones this rune does. Does nothing if this rune is already accepted.
+	 * stones this rune does. Returns this rune if it is already accepted.
 	 */
 	public Rune fix(){
 		if(isComplete){
 			return this;
 		}
 		int offset;
-		Path primary = primaryPath == null ? model.getPath(0) : primaryPath;
-		Path secondary = secondaryPath == null ? model.getPath(primary.order == 0 ? 1 : 0) : secondaryPath;
+		Path primary = primaryPath == null ? model.get(0) : primaryPath;
+		Path secondary = secondaryPath == null ? model.get(primary.order == 0 ? 1 : 0) : secondaryPath;
 		offset = primary.getSlotCount();
 		Stone[] stones = new Stone[offset+2+model.getStatSlotCount()];
 		int indexNew = 0,indexOld = 0,limitOld = stoneList.size();
@@ -213,6 +283,59 @@ public final class Rune{
 			stones[offset+i] = model.getStatstone(i, 0);
 		}
 		return new Rune(primary, secondary, List.of(stones));
+	}
+	public long toPermutationCode(){
+		if(!isComplete){
+			return -1;
+		}
+		long permutation = 0;
+		long multiplier = primaryPath.totalPermutationCount/model.statModPermutations;
+		int primarySlots = primaryPath.getSlotCount();
+		int secondarySlots = secondaryPath.getSlotCount();
+		int slot = 0;
+		for(;slot < primarySlots;slot++){
+			int sl = primaryPath.getStoneCountInSlot(slot);
+			permutation *= sl;
+			permutation += stoneList.get(slot).order;
+			multiplier /= sl;
+		}
+		permutation *= multiplier;
+		for(Path pt : model){
+			if(pt == secondaryPath){
+				break;
+			}
+			if(pt != primaryPath){
+				permutation += pt.secondaryPermutationCount;
+			}
+		}
+		Runestone ab = (Runestone)stoneList.get(slot++),cd = (Runestone)stoneList.get(slot++);
+		a:for(int a = 1;true;a++){//Iterate all permutations for the second path. Stop when counter reaches zero.
+			int slot0Length = secondaryPath.getStoneCountInSlot(a);
+			for(int b = 0;b < slot0Length;b++){
+				for(int c = a+1;c < secondarySlots;c++){
+					int slot1Length = secondaryPath.getStoneCountInSlot(c);
+					for(int d = 0;d < slot1Length;d++){
+						if(ab.slot == a && ab.order == b && cd.slot == c && cd.order == d){
+							break a;
+						}else{
+							permutation++;
+						}
+					}
+				}
+			}
+		}
+		int statSlots = model.getStatSlotCount();
+		for(int i = 0;i < statSlots;i++){
+			permutation *= model.getStatSlotLength(i);
+			permutation += stoneList.get(slot++).order;
+		}
+		for(Path pt : model){
+			if(pt == primaryPath){
+				break;
+			}
+			permutation += pt.totalPermutationCount;
+		}
+		return permutation;
 	}
 	/**
 	 * Translates this rune to another rune model. Throws an exception if unable to.
@@ -323,7 +446,11 @@ public final class Rune{
 	}
 	@Override
 	public int hashCode() {
-		return stoneList.hashCode();
+		int hashCode = 0;
+		for(Stone st : stoneList){
+			hashCode += st.hashCode();
+		}
+		return hashCode;
 	}
 	/**
 	 * Tests if this Rune is equal to the specified object. Two Runes are equal if they have the exact same set of stones

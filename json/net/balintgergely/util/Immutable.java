@@ -301,10 +301,11 @@ interface Immutable {
 			@Override
 			public Itr<E> trySplit() {
 				int start = index;
-				int middle = start+(maxIndex-start)/2;
-				if(middle != start){
-					index = middle;
-					return new Itr<>(array, minIndex, start, middle);
+				int splitPoint = start+(maxIndex-start)/2;
+				if(splitPoint != start){
+					index = splitPoint;
+					minIndex = splitPoint;
+					return new Itr<>(array, start, start, splitPoint);
 				}
 				return null;
 			}
@@ -314,52 +315,30 @@ interface Immutable {
 				return (Comparator<? super E>)JSON.entryComparator;
 			}
 		}
-		private static class RevItr<E> extends Itr<E>{
+		private static class RevItr<E> extends ArrayIterator.Descending<E>{
 			public RevItr(E[] array0, int fromIndex, int index, int toIndex) {
 				super(array0, fromIndex, index, toIndex);
 			}
 			@Override
-			public boolean hasNext() {
-				return super.hasPrevious();
-			}
-			@Override
-			public E next() {
-				return super.previous();
-			}
-			@Override
-			public boolean hasPrevious() {
-				return super.hasNext();
-			}
-			@Override
-			public E previous() {
-				return super.next();
-			}
-			@Override
-			public int nextIndex() {
-				return super.previousIndex();
-			}
-			@Override
-			public int previousIndex() {
-				return super.nextIndex();
+			public int characteristics(){
+				return Spliterator.ORDERED | Spliterator.SIZED | Spliterator.DISTINCT | Spliterator.NONNULL |
+						Spliterator.SUBSIZED | Spliterator.SORTED | Spliterator.IMMUTABLE;
 			}
 			@Override
 			public RevItr<E> trySplit() {
 				int start = index;
-				int middle = start-(start-minIndex)/2;
-				if(middle != start){
-					index = middle;
-					return new RevItr<>(array, middle, start, maxIndex);
+				int splitPoint = start-(start-minIndex)/2;
+				if(splitPoint != start){
+					index = splitPoint;
+					maxIndex = splitPoint;
+					return new RevItr<>(array, splitPoint, start, start);
 				}
 				return null;
 			}
 			@Override
-			public long estimateSize() {
-				return index-minIndex;
-			}
-			@Override
 			@SuppressWarnings("unchecked")
 			public Comparator<? super E> getComparator() {
-				return (Comparator<? super E>)JSON.entryComparator.reversed();
+				return (Comparator<? super E>)JSON.entryComparator;
 			}
 		}
 		@Override
@@ -416,8 +395,8 @@ interface Immutable {
 			return set.last().getKey();
 		}
 		private static class Eitr implements ListIterator<String>,Spliterator<String>{
-			private ImmutableSet.Itr<Map.Entry<String, Object>> itr;
-			private Eitr(ImmutableSet.Itr<Map.Entry<String, Object>> itr){
+			private ArrayIterator<Map.Entry<String, Object>> itr;
+			private Eitr(ArrayIterator<Map.Entry<String, Object>> itr){
 				this.itr = itr;
 			}
 			@Override
@@ -430,7 +409,7 @@ interface Immutable {
 			}
 			@Override
 			public Spliterator<String> trySplit() {
-				ImmutableSet.Itr<Map.Entry<String, Object>> t = itr.trySplit();
+				ArrayIterator<Map.Entry<String, Object>> t = itr.trySplit();
 				return t == null ? null : new Eitr(t);
 			}
 			@Override

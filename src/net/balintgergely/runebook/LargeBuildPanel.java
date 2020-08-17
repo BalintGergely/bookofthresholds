@@ -2,6 +2,7 @@ package net.balintgergely.runebook;
 
 import java.awt.Image;
 import java.awt.RenderingHints;
+import java.awt.event.ActionEvent;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
 import java.awt.event.MouseEvent;
@@ -20,11 +21,13 @@ import javax.swing.GroupLayout.Group;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.LineBorder;
+import javax.swing.event.ChangeEvent;
 import javax.swing.ImageIcon;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.JToolTip;
 
@@ -67,6 +70,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 	};
 	private JComboBox<Champion> championBox;
 	private JLabel descriptionLabel;
+	private JTextField codeField;
 	RuneButtonGroup model;
 	private RoleDisplayButton[] roles;
 	public void setRune(Rune rn){
@@ -139,6 +143,38 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 				buildGroup0.add(roles[i] = bt);
 			}
 		}
+		buildGroup0.hor.addGap(0, 10, 10);
+		{
+			buildGroup0.add(codeField = new JTextField(5));
+			codeField.setMaximumSize(codeField.getPreferredSize());
+			codeField.setOpaque(false);
+			codeField.setForeground(Color.WHITE);
+			Border completeBorder = codeField.getBorder();
+			Border incorrectBorder = new LineBorder(Color.RED, 1);
+			codeField.setBorder(null);
+			codeField.setCaretColor(Color.WHITE);
+			codeField.setToolTipText(assetManager.z.getString("permtt"));
+			super.add(codeField);
+			model.addChangeListener((ChangeEvent e) -> {
+				Rune rune = model.getRune();
+				if(rune.isComplete){
+					codeField.setBorder(completeBorder);
+					codeField.setText(Long.toString(rune.toPermutationCode(), 36).toUpperCase());
+				}else{
+					codeField.setBorder(null);
+					codeField.setText("");
+				}
+			});
+			codeField.addActionListener((ActionEvent e) -> {
+				String str = codeField.getText();
+				try{
+					model.setRune(new Rune(model.runeModel,Long.parseLong(str, 36)));
+					codeField.setBorder(completeBorder);
+				}catch(Throwable t){
+					codeField.setBorder(incorrectBorder);
+				}
+			});
+		}
 		GLG meatGroup = new GLG(g, HORIZONTAL, Alignment.CENTER, false);
 		GLG leftGroup = new GLG(g, VERTICAL, Alignment.CENTER, false);
 		GLG rightGroup = new GLG(g, VERTICAL, Alignment.CENTER, false);
@@ -189,7 +225,6 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 				rowOfButtons(g, rightGroup, lst, TYPE_STAT_MOD, false);
 			}
 		}
-
 		{
 			mainGroup.add(descriptionLabel = new JLabel());
 			descriptionLabel.setForeground(TT_FOREGROUND);

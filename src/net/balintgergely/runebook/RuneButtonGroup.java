@@ -24,9 +24,10 @@ public class RuneButtonGroup{
 	public final RuneModel runeModel;
 	public final List<RuneButtonModel> primaryPathModels,secondaryPathModels,keystoneModels;
 	public final List<List<RuneButtonModel>> primarySlotModels,secondarySlotModels,statSlotModels;
+	private Rune cachedRune;
 	public RuneButtonGroup(RuneModel model){
 		this.runeModel = model;
-		int pathCount = model.getPathCount();
+		int pathCount = model.size();
 		if(pathCount == 0){
 			primaryPathModels = List.of();
 			secondaryPathModels = List.of();
@@ -37,7 +38,7 @@ public class RuneButtonGroup{
 			RuneButtonModel[] ppm = new RuneButtonModel[pathCount],spm = new RuneButtonModel[pathCount];
 			int[] slotModel = null;
 			for(int i = 0;i < pathCount;i++){
-				Path p = model.getPath(i);
+				Path p = model.get(i);
 				int slots = p.getSlotCount();
 				if(slotModel == null){
 					slotModel = new int[slots];
@@ -155,8 +156,12 @@ public class RuneButtonGroup{
 				statSlotModels.get(i).get(index).setSelected(true);
 			}
 		}
+		this.cachedRune = rune;
 	}
 	public Rune getRune(){
+		if(cachedRune != null){
+			return cachedRune;
+		}
 		ArrayList<Stone> stoneList = new ArrayList<>(9);
 		Path primary;
 		if(primaryPath == null){
@@ -190,7 +195,7 @@ public class RuneButtonGroup{
 				stoneList.add(runeModel.getStatstone(i,md.index));
 			}
 		}
-		return new Rune(runeModel,primary,secondary,stoneList);
+		return cachedRune = new Rune(runeModel,primary,secondary,stoneList);
 	}
 	public void addChangeListener(ChangeListener ls){
 		listenerList.add(ls);
@@ -200,6 +205,7 @@ public class RuneButtonGroup{
 	}
 	private ChangeEvent che;
 	private void fireGlobalStateChanged(){
+		cachedRune = null;
 		for(ChangeListener ls : listenerList){
 			if(che == null){
 				che = new ChangeEvent(this);

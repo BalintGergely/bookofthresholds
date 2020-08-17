@@ -210,7 +210,7 @@ public interface Mirror {
 		}
 		@Override
 		public boolean isEmpty() {
-			return false;
+			return mirror.isEmpty();
 		}
 		@Override
 		public boolean containsKey(Object key) {

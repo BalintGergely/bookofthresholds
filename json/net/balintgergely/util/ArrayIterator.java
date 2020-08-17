@@ -4,16 +4,28 @@ import java.util.ListIterator;
 import java.util.NoSuchElementException;
 import java.util.Spliterator;
 import java.util.function.Consumer;
-
+/**
+ * A simple unmodifiable ListIterator and Spliterator implementation over an array.
+ * @author balintgergely
+ */
 public class ArrayIterator<E> implements ListIterator<E>,Spliterator<E>{
-	E[] array; 
-	int minIndex,index,maxIndex;
+	protected E[] array; 
+	protected int minIndex,index,maxIndex;
 	public ArrayIterator(E[] array0){
 		array = array0;
+		minIndex = 0;
+		index = 0;
+		maxIndex = array0.length;
 	}
-	public ArrayIterator(E[] array0,int fromIndex,int index,int toIndex) {
+	public ArrayIterator(E[] array0,int index0){
 		array = array0;
-		index = fromIndex;
+		minIndex = 0;
+		index = index0;
+		maxIndex = array0.length;
+	}
+	public ArrayIterator(E[] array0,int fromIndex,int index0,int toIndex) {
+		array = array0;
+		index = index0;
 		minIndex = fromIndex;
 		maxIndex = toIndex;
 	}
@@ -70,10 +82,11 @@ public class ArrayIterator<E> implements ListIterator<E>,Spliterator<E>{
 	@Override
 	public ArrayIterator<E> trySplit() {
 		int start = index;
-		int middle = start+(maxIndex-start)/2;
-		if(middle != start){
-			index = middle;
-			return new ArrayIterator<>(array, minIndex, start, middle);
+		int splitPoint = start+(maxIndex-start)/2;
+		if(splitPoint != start){
+			index = splitPoint;
+			minIndex = splitPoint;
+			return new ArrayIterator<>(array, start, start, splitPoint);
 		}
 		return null;
 	}
@@ -95,5 +108,61 @@ public class ArrayIterator<E> implements ListIterator<E>,Spliterator<E>{
 	@Override
 	public long getExactSizeIfKnown() {
 		return estimateSize();
+	}
+	public static class Descending<E> extends ArrayIterator<E>{
+		public Descending(E[] array0, int fromIndex, int index0, int toIndex) {
+			super(array0, fromIndex, index0, toIndex);
+		}
+		public Descending(E[] array0, int index0) {
+			super(array0, index0);
+		}
+		public Descending(E[] array0) {
+			super(array0);
+		}
+		@Override
+		public boolean hasNext() {
+			return index > minIndex;
+		}
+		@Override
+		public E next() {
+			if(index <= minIndex){
+				throw new NoSuchElementException();
+			}
+			return array[--index];
+		}
+		@Override
+		public boolean hasPrevious() {
+			return index < maxIndex;
+		}
+		@Override
+		public E previous() {
+			if(index >= maxIndex){
+				throw new NoSuchElementException();
+			}
+			return array[index++];
+		}
+		@Override
+		public int nextIndex() {
+			return maxIndex-index;
+		}
+		@Override
+		public int previousIndex() {
+			return maxIndex-index-1;
+		}
+		@Override
+		public ArrayIterator<E> trySplit() {
+			int start = index;
+			int splitPoint = start-(start-minIndex)/2;
+			if(splitPoint != start){
+				index = splitPoint;
+				maxIndex = splitPoint;
+				return new Descending<>(array, splitPoint, start, start);
+			}
+			return null;
+		}
+		@Override
+		public long estimateSize() {
+			return index-minIndex;
+		}
 	}
 }
