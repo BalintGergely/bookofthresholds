@@ -28,6 +28,7 @@ import java.util.zip.ZipOutputStream;
 
 import javax.imageio.ImageIO;
 
+import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
 import net.balintgergely.util.JSONBodySubscriber;
 /**
@@ -42,8 +43,9 @@ public class DataDragon {
 	private Map<String,Object> cache = new HashMap<>();
 	private Map<String,Object> data = new ConcurrentHashMap<>();
 	private HttpClient httpClient;
+	private String gameVersion;
 	private File file;
-	public DataDragon(File cacheFile,HttpClient httpClient){
+	public DataDragon(File cacheFile,HttpClient httpClient,String gameVersion){
 		this.file = cacheFile;
 		this.httpClient = httpClient;
 		if(cacheFile.exists()){
@@ -67,6 +69,7 @@ public class DataDragon {
 				th.printStackTrace();
 			}
 		}
+		this.gameVersion = gameVersion;
 	}
 	/**
 	 * Creates a custom .txt file with the specified string content.
@@ -111,6 +114,9 @@ public class DataDragon {
 	 */
 	public Object fetchObject(String path){
 		return data.computeIfAbsent(path, this::fetchInternal);
+	}
+	public JSMap getManifest(){
+		return JSON.asJSMap(fetchObject(gameVersion+"/manifest.json"));
 	}
 	/**
 	 * Preloads a bunch of objects more efficiently.

@@ -3,37 +3,37 @@ package net.balintgergely.runebook;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.List;
 import java.util.Objects;
 
 import net.balintgergely.runebook.RuneModel.Path;
 import net.balintgergely.runebook.RuneModel.Runestone;
 import net.balintgergely.runebook.RuneModel.Statstone;
 import net.balintgergely.runebook.RuneModel.Stone;
+import net.balintgergely.util.ArrayListView;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 
-public final class Rune{
+public final class Rune extends ArrayListView<Stone>{
+	public static final Stone[] EMPTY_STONE_ARRAY = new Stone[0];
 	public final RuneModel model;
 	public final Path primaryPath;
 	public final Path secondaryPath;
-	public final List<Stone> stoneList;
 	public final boolean isComplete;
 	Rune(RuneModel model){
+		super(EMPTY_STONE_ARRAY);
 		this.model = model;
 		this.primaryPath = null;
 		this.secondaryPath = null;
-		this.stoneList = List.of();
 		this.isComplete = false;
 	}
-	private Rune(Path primary,Path secondary,List<Stone> stoneList){
-		this.model = primary.model;
+	private Rune(RuneModel model,Path primary,Path secondary,Stone[] stones,boolean isComplete){
+		super(stones);
+		this.model = model;
 		this.primaryPath = primary;
 		this.secondaryPath = secondary;
-		this.stoneList = stoneList;
-		this.isComplete = true;
+		this.isComplete = isComplete;
 	}
-	public Rune(RuneModel model,Path primaryPath,Path secondaryPath,Collection<Stone> stoneCollection){
+	public static Rune ofStones(RuneModel model,Path primaryPath,Path secondaryPath,Collection<Stone> stoneCollection){
 		int inPrimary = 0,inSecondary = 0;
 		int count = 0;
 		boolean primaryPathFound = false,secondaryPathFound = false;
@@ -119,26 +119,25 @@ public final class Rune{
 			stoneArray = Arrays.copyOf(stoneArray, count);
 		}
 		if(!pathLocked && inSecondary > 2){
-			this.primaryPath = secondaryPath;
-			this.secondaryPath = primaryPath;
+			Path pt = primaryPath;
+			primaryPath = secondaryPath;
+			secondaryPath = pt;
 			int k = inPrimary;
 			inPrimary = inSecondary;
 			inSecondary = k;
-			primaryPath = this.primaryPath;
-			secondaryPath = this.secondaryPath;
-		}else{
-			this.primaryPath = primaryPath;
-			this.secondaryPath = secondaryPath;
 		}
 		if(inSecondary > 2){
 			throw new IllegalArgumentException("Can not have more than 2 stones in secondary path!");
 		}
 		if((secondaryPath != null && model != secondaryPath.model) || (primaryPath != null && model != primaryPath.model)){
 			throw new IllegalArgumentException("Model mismatch!");
-		}//Order as follows: Keystone, Primary1,Primary2,Primary3,Secondary1,Secondary2,Finally statstones ordered by their slot.
-		Arrays.sort(stoneArray, this::compare);//This will throw a slot conflict exception if multiple stones fill the same slot.
-		int statSlot = 0;
+		}
 		int statSlotCount = model.getStatSlotCount();
+		Rune rn = new Rune(model, primaryPath, secondaryPath, stoneArray,
+primaryPath != null && inPrimary == primaryPath.getSlotCount() && inSecondary == 2 && (count-inPrimary-inSecondary) == statSlotCount);
+		//Order as follows: Keystone, Primary1,Primary2,Primary3,Secondary1,Secondary2,Finally statstones ordered by their slot.
+		Arrays.sort(stoneArray, rn::compare);//This will throw a slot conflict exception if multiple stones fill the same slot.
+		int statSlot = 0;
 		for(int i = inPrimary+inSecondary;i < count;i++){
 			Statstone stone = (Statstone)stoneArray[i];
 			if(stone.minSlot > statSlot){
@@ -147,12 +146,10 @@ public final class Rune{
 				throw new IllegalArgumentException("Illegal stat stone config!");
 			}
 			statSlot++;
-		}//Complete when all primary path slots are filled, 2 bravo slots are filled and all stat stone slots are filled.
-		isComplete = primaryPath != null && inPrimary == primaryPath.getSlotCount() && inSecondary == 2 && (count-inPrimary-inSecondary) == statSlotCount;
-		stoneList = List.of(stoneArray);
-		this.model = model;
+		}
+		return rn;
 	}
-	public Rune(RuneModel model,long permutationCode){
+	public static Rune ofPermutationCode(RuneModel model,long permutationCode){
 		if(permutationCode < 0 || permutationCode >= model.totalPermutationCount){
 			throw new IllegalArgumentException();
 		}
@@ -164,16 +161,15 @@ public final class Rune{
 			}
 			permutationCode -= pt.totalPermutationCount;
 		}
-		this.primaryPath = path0;
 		int primarySlots = path0.getSlotCount();
 		long statModRemainder = permutationCode%model.statModPermutations;
 		permutationCode /= model.statModPermutations;
 		long multiplier = path0.totalPermutationCount/model.statModPermutations;
-		Stone[] stones = new Stone[primarySlots+2+model.getStatSlotCount()];
+		Stone[] stoneArray = new Stone[primarySlots+2+model.getStatSlotCount()];
 		int slot = 0;
 		for(;slot < primarySlots;slot++){
 			multiplier /= path0.getStoneCountInSlot(slot);
-			stones[slot] = path0.getStone(slot, (int)(permutationCode/multiplier));
+			stoneArray[slot] = path0.getStone(slot, (int)(permutationCode/multiplier));
 			permutationCode %= multiplier;
 		}
 		Path path1 = null;
@@ -186,7 +182,6 @@ public final class Rune{
 				permutationCode -= pt.secondaryPermutationCount;
 			}
 		}
-		this.secondaryPath = path1;
 		int secondarySlots = path1.getSlotCount();
 		a:for(int a = 1;true;a++){//Iterate all permutations for the second path. Stop when counter reaches zero.
 			int slot0Length = path1.getStoneCountInSlot(a);
@@ -195,8 +190,8 @@ public final class Rune{
 					int slot1Length = path1.getStoneCountInSlot(c);
 					for(int d = 0;d < slot1Length;d++){
 						if(permutationCode == 0){
-							stones[slot++] = path1.getStone(a, b);
-							stones[slot++] = path1.getStone(c, d);
+							stoneArray[slot++] = path1.getStone(a, b);
+							stoneArray[slot++] = path1.getStone(c, d);
 							break a;
 						}
 						permutationCode--;
@@ -208,12 +203,10 @@ public final class Rune{
 		int statSlots = model.getStatSlotCount();
 		for(int i = 0;i < statSlots;i++){
 			multiplier /= model.getStatSlotLength(i);
-			stones[slot++] = model.getStatstone(i,(int)(statModRemainder/multiplier));
+			stoneArray[slot++] = model.getStatstone(i,(int)(statModRemainder/multiplier));
 			statModRemainder %= multiplier;
 		}
-		this.stoneList = List.of(stones);
-		this.isComplete = true;
-		this.model = model;
+		return new Rune(model, path0, path1, stoneArray, true);
 	}
 	/**
 	 * Creates a new rune that is accepted by the Riot simulation server and contains all
@@ -227,23 +220,23 @@ public final class Rune{
 		Path primary = primaryPath == null ? model.get(0) : primaryPath;
 		Path secondary = secondaryPath == null ? model.get(primary.order == 0 ? 1 : 0) : secondaryPath;
 		offset = primary.getSlotCount();
-		Stone[] stones = new Stone[offset+2+model.getStatSlotCount()];
-		int indexNew = 0,indexOld = 0,limitOld = stoneList.size();
+		Stone[] stoneArray = new Stone[offset+2+model.getStatSlotCount()];
+		int indexNew = 0,indexOld = 0,limitOld = data.length;
 		for(;indexNew < offset;indexNew++){
-			Stone candidate = indexOld == limitOld ? null : stoneList.get(indexOld);
+			Stone candidate = indexOld == limitOld ? null : data[indexOld];
 			if(candidate instanceof Runestone){
 				Runestone st = ((Runestone)candidate);
 				if(st.path == primary && st.slot == indexNew){
-					stones[indexNew] = st;
+					stoneArray[indexNew] = st;
 					indexOld++;
 					continue;
 				}
 			}
-			stones[indexNew] = primary.getStone(indexNew, 0);
+			stoneArray[indexNew] = primary.getStone(indexNew, 0);
 		}
 		Runestone second0 = null,second1 = null;
 		for(int i = 0;i < 2;i++){
-			Stone candidate = indexOld == limitOld ? null : stoneList.get(indexOld);
+			Stone candidate = indexOld == limitOld ? null : data[indexOld];
 			if(candidate instanceof Runestone){
 				Runestone st = (Runestone)candidate;
 				if(st.path == secondaryPath){
@@ -263,26 +256,26 @@ public final class Rune{
 			}
 		}
 		if(second0.slot > second1.slot){
-			stones[offset++] = second1;
-			stones[offset++] = second0;
+			stoneArray[offset++] = second1;
+			stoneArray[offset++] = second0;
 		}else{
-			stones[offset++] = second0;
-			stones[offset++] = second1;
+			stoneArray[offset++] = second0;
+			stoneArray[offset++] = second1;
 		}
 		int slots = model.getStatSlotCount();
 		a: for(int i = 0;i < slots;i++){
-			Stone candidate = indexOld == limitOld ? null : stoneList.get(indexOld);
+			Stone candidate = indexOld == limitOld ? null : data[indexOld];
 			if(candidate instanceof Statstone){
 				Statstone st = (Statstone)candidate;
 				if(st.minSlot <= i){
-					stones[offset+i] = candidate;
+					stoneArray[offset+i] = candidate;
 					indexOld++;
 					continue a;
 				}
 			}
-			stones[offset+i] = model.getStatstone(i, 0);
+			stoneArray[offset+i] = model.getStatstone(i, 0);
 		}
-		return new Rune(primary, secondary, List.of(stones));
+		return new Rune(model, primary, secondary, stoneArray, true);
 	}
 	public long toPermutationCode(){
 		if(!isComplete){
@@ -296,7 +289,7 @@ public final class Rune{
 		for(;slot < primarySlots;slot++){
 			int sl = primaryPath.getStoneCountInSlot(slot);
 			permutation *= sl;
-			permutation += stoneList.get(slot).order;
+			permutation += data[slot].order;
 			multiplier /= sl;
 		}
 		permutation *= multiplier;
@@ -308,7 +301,7 @@ public final class Rune{
 				permutation += pt.secondaryPermutationCount;
 			}
 		}
-		Runestone ab = (Runestone)stoneList.get(slot++),cd = (Runestone)stoneList.get(slot++);
+		Runestone ab = (Runestone)data[slot++],cd = (Runestone)data[slot++];
 		a:for(int a = 1;true;a++){//Iterate all permutations for the second path. Stop when counter reaches zero.
 			int slot0Length = secondaryPath.getStoneCountInSlot(a);
 			for(int b = 0;b < slot0Length;b++){
@@ -327,7 +320,7 @@ public final class Rune{
 		int statSlots = model.getStatSlotCount();
 		for(int i = 0;i < statSlots;i++){
 			permutation *= model.getStatSlotLength(i);
-			permutation += stoneList.get(slot++).order;
+			permutation += data[slot++].order;
 		}
 		for(Path pt : model){
 			if(pt == primaryPath){
@@ -346,17 +339,17 @@ public final class Rune{
 		}
 		Path newPrimary = primaryPath == null ? null : (Path)Objects.requireNonNull(newModel.stoneMap.get(primaryPath.id));
 		Path newSecondary = secondaryPath == null ? null : (Path)Objects.requireNonNull(newModel.stoneMap.get(secondaryPath.id));
-		ArrayList<Stone> newStoneList = new ArrayList<>(stoneList.size());
-		for(Stone st : stoneList){
+		ArrayList<Stone> newStoneList = new ArrayList<>(data.length);
+		for(Stone st : data){
 			newStoneList.add(Objects.requireNonNull(newModel.stoneMap.get(st.id)));
 		}
-		return new Rune(newModel, newPrimary, newSecondary, newStoneList);
+		return ofStones(newModel, newPrimary, newSecondary, newStoneList);
 	}
 	public int statStoneOffset(){
-		int i = stoneList.size();
+		int i = data.length;
 		while(i > 0){
 			i--;
-			if(stoneList.get(i) instanceof Runestone){
+			if(data[i] instanceof Runestone){
 				return i+1;
 			}
 		}
@@ -371,11 +364,11 @@ public final class Rune{
 			if(p == null){
 				return null;
 			}
-			if(searchIndex >= stoneList.size()){
-				searchIndex = stoneList.size()-1;
+			if(searchIndex >= data.length){
+				searchIndex = data.length-1;
 			}
 			while(searchIndex >= 0){
-				Stone stone = stoneList.get(searchIndex);
+				Stone stone = data[searchIndex];
 				if(stone instanceof Runestone){
 					Runestone st = (Runestone)stone;
 					if(st.path == p){
@@ -394,10 +387,10 @@ public final class Rune{
 			return null;
 		case 2:
 			int offset = statStoneOffset();
-			int limit = stoneList.size();
+			int limit = data.length;
 			int currentSlot = 0;
 			while(offset < limit){
-				Statstone st = (Statstone)stoneList.get(offset);
+				Statstone st = (Statstone)data[offset];
 				if(st.minSlot > currentSlot){
 					currentSlot = st.minSlot;
 				}
@@ -419,10 +412,10 @@ public final class Rune{
 		return st == null ? -1 : st.order;
 	}
 	public Runestone getKeystone(){
-		if(stoneList.isEmpty()){
+		if(data == EMPTY_STONE_ARRAY){
 			return null;
 		}
-		Stone st = stoneList.get(0);
+		Stone st = data[0];
 		if(st instanceof Runestone && ((Runestone)st).slot == 0){
 			return (Runestone)st;
 		}else{
@@ -430,8 +423,8 @@ public final class Rune{
 		}
 	}
 	public JSMap toJSMap(){
-		JSList perkJSList = new JSList(stoneList.size());
-		for(Stone perk : stoneList){
+		JSList perkJSList = new JSList(data.length);
+		for(Stone perk : data){
 			perkJSList.add(perk.id);
 		}
 		JSMap map = new JSMap();
@@ -446,46 +439,12 @@ public final class Rune{
 	}
 	@Override
 	public int hashCode() {
-		int hashCode = 0;
-		for(Stone st : stoneList){
-			hashCode += st.hashCode();
-		}
-		return hashCode;
+		return Arrays.hashCode(data);
 	}
-	/**
-	 * Tests if this Rune is equal to the specified object. Two Runes are equal if they have the exact same set of stones
-	 * regardless of primary/secondary paths and the order of statstones.
-	 */
 	@Override
 	public boolean equals(Object that){
 		if(that instanceof Rune){
-			List<Stone> lst = ((Rune)that).stoneList;
-			int len = lst.size();
-			if(len == stoneList.size()){
-				int i = 0;
-				while(i < len){
-					Stone st = stoneList.get(i);
-					if(st instanceof Statstone){
-						if(lst.get(i) instanceof Statstone){
-							int shards0 = 0,shards1 = 0;
-							while(i < len){
-								Statstone st0 = (Statstone)stoneList.get(i);
-								Statstone st1 = (Statstone)lst.get(i);
-								shards0 += (1 << (st0.statId*2));
-								shards1 += (1 << (st1.statId*2));
-								i++;
-							}
-							return shards0 == shards1;
-						}
-						return false;//They have a stone that we do not have.
-					}
-					if(lst.get(i) != st && (lst.indexOf(st) < 0)){
-						return false;//We have a stone that they do not have.
-					}
-					i++;
-				}
-				return true;//No statstones
-			}
+			return Arrays.deepEquals(data, ((Rune)that).data);
 		}
 		return false;
 	}
@@ -525,4 +484,5 @@ public final class Rune{
 		}
 		return 0;
 	}
+	
 }

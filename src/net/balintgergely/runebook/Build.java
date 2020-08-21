@@ -4,23 +4,23 @@ import java.util.Objects;
 
 public class Build implements Cloneable{
 	private Champion champion;
-	private byte roles;
+	private byte flags;
 	private Rune rune;
 	private String name;
-	private long timestamp;
+	private long order;
 	public Build(String name,Champion champion,Rune rune,byte roles,long timestamp){
 		this.name = Objects.requireNonNull(name);
-		this.roles = roles;
+		this.flags = roles;
 		this.rune = Objects.requireNonNull(rune);
 		this.champion = champion;
-		this.timestamp = timestamp;
+		this.order = timestamp;
 	}
 	public Build(Build that){
 		this.name = that.name;
-		this.roles = that.roles;
+		this.flags = that.flags;
 		this.rune = that.rune;
 		this.champion = that.champion;
-		this.timestamp = that.timestamp;
+		this.order = that.order;
 	}
 	public Champion getChampion(){
 		return champion;
@@ -28,11 +28,11 @@ public class Build implements Cloneable{
 	public void setChampion(Champion ch){
 		champion = ch;
 	}
-	public byte getRoles(){
-		return roles;
+	public byte getFlags(){
+		return flags;
 	}
-	public void setRoles(byte byt){
-		roles = byt;
+	public void setFlags(byte byt){
+		flags = byt;
 	}
 	public Rune getRune(){
 		return rune;
@@ -46,11 +46,11 @@ public class Build implements Cloneable{
 	public void setName(String name){
 		this.name = Objects.requireNonNull(name);
 	}
-	public long getTimestamp() {
-		return timestamp;
+	public long getOrder() {
+		return order;
 	}
-	public void setTimestamp(long timestamp){
-		this.timestamp = timestamp;
+	public void setOrder(long order){
+		this.order = order;
 	}
 	@Override
 	public Build clone() throws CloneNotSupportedException{

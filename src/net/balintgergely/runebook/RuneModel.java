@@ -1,40 +1,27 @@
 package net.balintgergely.runebook;
 
-import java.awt.Color;
-import java.awt.Image;
-import java.awt.image.BufferedImage;
-import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.PropertyResourceBundle;
-import java.util.Spliterator;
 import java.util.TreeMap;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
-import javax.swing.ImageIcon;
-
-import net.balintgergely.util.ArrayIterator;
+import net.balintgergely.util.ArrayListView;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
 
-public final class RuneModel extends AbstractList<RuneModel.Path>{
+public final class RuneModel extends ArrayListView<RuneModel.Path>{
 	private static final String STAT_MODS_ROUTE = "perk-images/StatMods/";
 	private static final int[][] STAT_MODEL = {
 			{5,3,4},
 			{5,1,2},
 			{0,1,2}
 	};
-	public static final int PATH_SIZE = 32,KEYSTONE_SIZE = 48,RUNESTONE_SIZE = 32,STAT_MOD_SIZE = 24;
 	public final int statModPermutations = 27;//3*3*3
 	public final long totalPermutationCount;
-	private Path[] paths;
 	private Statstone[] statStones;
 	/**
 	 * A map of all stones contained in this model.
@@ -44,63 +31,52 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 	 * The foundation rune. Contains no stones, but can be forged into any other rune.
 	 */
 	public final Rune foundation;
-	public RuneModel(JSList model,Function<String,BufferedImage> ip,PropertyResourceBundle bundle){
-		paths = new Path[model.size()];
-		if(paths.length < 2){
+	public RuneModel(JSList model,PropertyResourceBundle bundle){
+		super(new Path[model.size()]);
+		if(data.length < 2){
 			throw new IllegalArgumentException();
 		}
 		HashMap<Integer,Stone> fm = new HashMap<>();
-		final BufferedImage replacement;
-		if(ip == null){
-			replacement = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-			ip = s -> replacement;
-		}else{
-			replacement = null;
-		}
-		for(byte i = 0;i < paths.length;i++){
-			ptp(replacement, i, model, ip, fm);
+		for(byte i = 0;i < data.length;i++){
+			ptp(i, model, fm);
 		}
 		statStones = new Statstone[]{//Icon image			Name		Id	SA	MIN	MAX
-				sts(0, ip, "StatModsHealthScalingIcon.png", bundle.getString("statHp"),	5001, 2, 2, 0),
-				sts(1, ip, "StatModsArmorIcon.png",			bundle.getString("statAr"),	5002, 1, 2, 1),
-				sts(2, ip, "StatModsMagicResIcon.png",		bundle.getString("statMr"),	5003, 1, 2, 2),
-				sts(3, ip, "StatModsAttackSpeedIcon.png",	bundle.getString("statAs"),	5005, 0, 0, 1),
-				sts(4, ip, "StatModsCDRScalingIcon.png",	bundle.getString("statCd"),	5007, 0, 0, 2),
-				sts(5, ip, "StatModsAdaptiveForceIcon.png",	bundle.getString("statAf"),	5008, 0, 1, 0),
+				sts(0, "StatModsHealthScalingIcon.png", bundle.getString("statHp"),	5001, 2, 2, 0),
+				sts(1, "StatModsArmorIcon.png",			bundle.getString("statAr"),	5002, 1, 2, 1),
+				sts(2, "StatModsMagicResIcon.png",		bundle.getString("statMr"),	5003, 1, 2, 2),
+				sts(3, "StatModsAttackSpeedIcon.png",	bundle.getString("statAs"),	5005, 0, 0, 1),
+				sts(4, "StatModsCDRScalingIcon.png",	bundle.getString("statCd"),	5007, 0, 0, 2),
+				sts(5, "StatModsAdaptiveForceIcon.png",	bundle.getString("statAf"),	5008, 0, 1, 0),
 		};
 		for(Statstone st : statStones){
 			fm.put(st.id, st);
 		}
 		stoneMap = Collections.unmodifiableMap(fm);//Faster.
 		long tpc = 0;
-		for(Path pt : paths){
+		for(Path pt : data){
 			tpc += pt.totalPermutationCount;
 		}
 		this.totalPermutationCount = tpc;
 		foundation = new Rune(this);
 	}
-	private Path ptp(BufferedImage replacement,byte order,JSList parseList,Function<String,BufferedImage> imageProvider,Map<Integer,Stone> sm){
-		Path pt = paths[order];
+	private Path ptp(byte order,JSList parseList,Map<Integer,Stone> sm){
+		Path pt = data[order];
 		if(pt == null){
 			JSMap pathModel = parseList.getJSMap(order);
-			BufferedImage img = imageProvider.apply(pathModel.getString("icon"));
-			pt = new Path(order, this, parseList, pathModel, imageProvider, img, img == replacement ? null : AssetManager.averagePixels(img), sm);
+			pt = new Path(order, this, parseList, pathModel, sm);
 			sm.put(pt.id, pt);
 		}
 		return pt;
 	}
-	private Statstone sts(int statId,
-			Function<String,BufferedImage> imageProvider,String imageName,String name,int id,int leastSlot,int mostSlot,int index){
-		BufferedImage image = imageProvider.apply(STAT_MODS_ROUTE+imageName);
+	private Statstone sts(int statId,String imageName,String name,int id,int leastSlot,int mostSlot,int index){
 		return new Statstone(
 				statId,
 				this,
-				resize(STAT_MOD_SIZE,image),
-				AssetManager.averagePixels(image),
+				STAT_MODS_ROUTE+imageName,
 				name, id, leastSlot, mostSlot, index);
 	}
 	public Path pathForKey(String name){
-		for(Path pt : paths){
+		for(Path pt : data){
 			if(pt.key.equalsIgnoreCase(name)){
 				return pt;
 			}
@@ -118,19 +94,20 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 	public Statstone getStatstone(int slot,int index){
 		return statStones[STAT_MODEL[slot][index]];
 	}
-	public static abstract class Stone extends ImageIcon{
-		private static final long serialVersionUID = 1L;
+	public static abstract class Stone{
+		public final String imageRoute;
+		public final String name;
 		public final int id;
 		public final byte order;
-		private Stone(byte order,Image image,String name,int id){
-			super(image,name);
+		private Stone(byte order,String imageRoute,String name,int id){
+			this.imageRoute = imageRoute;
+			this.name = name;
 			this.id = id;
 			this.order = order;
 		}
 	}
 	public static class Path extends Stone{
 		public final RuneModel model;
-		public final Color color;
 		public final String key;
 		public final long totalPermutationCount;
 		/**
@@ -150,17 +127,13 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 			return slot < slots.length && index < slots[slot].length;
 		}
 		private Runestone[][] slots;
-		private static final long serialVersionUID = 1L;
 		public Path(
 				byte order,
 				RuneModel rm,
 				JSList parseList,
 				JSMap model,
-				Function<String,BufferedImage> imageProvider,
-				BufferedImage img,
-				Color color,
 				Map<Integer,Stone> stoneMap){
-			super(order,img,model.getString("name"),model.getInt("id"));
+			super(order,model.getString("icon"),model.getString("name"),model.getInt("id"));
 			long pp = rm.statModPermutations;
 			{
 				this.model = rm;
@@ -175,7 +148,7 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 						JSMap stone = slist.getJSMap(n);
 						Runestone rs = new Runestone(n,
 								this,
-								resize(i == 0 ? KEYSTONE_SIZE : RUNESTONE_SIZE,imageProvider.apply(stone.getString("icon"))),
+								stone.getString("icon"),
 								stone.getString("name"),
 								stone.getString("longDesc"),
 								stone.getInt("id"),i);
@@ -191,13 +164,12 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 					}
 				}
 				secondaryPermutationCount = secondaryPermutations;
-				this.color = color;
-				rm.paths[order] = this;
+				rm.data[order] = this;
 			}
 			long tpp = 0;
-			for(byte i = 0;i < rm.paths.length;i++){
+			for(byte i = 0;i < rm.data.length;i++){
 				if(i != order){
-					Path pt = rm.ptp(img, i, parseList, imageProvider, stoneMap);
+					Path pt = rm.ptp(i, parseList, stoneMap);
 					tpp += pp*pt.secondaryPermutationCount;
 				}
 			}
@@ -205,31 +177,24 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 		}
 	}
 	public static class Runestone extends Stone{
-		private static final long serialVersionUID = 1L;
+		//private static final Pattern uikitPattern = Pattern.compile('')
 		public final Path path;
 		public final int slot;
 		public final String description;
-		private Runestone(byte order,Path path,Image image,String name,String description,int id,int slot){
-			super(order,image,name.toUpperCase(),id);
+		private Runestone(byte order,Path path,String imageRoute,String name,String description,int id,int slot){
+			super(order,imageRoute,name.toUpperCase(),id);
 			this.path = path;
 			this.slot = slot;
-			this.description = description;
-		}
-		@Override
-		public String toString(){
-			return "<html><h2>"+super.getDescription()+"</h2>"+description+"</html>";
+			this.description = "<html><h2>"+name+"</h2>"+description+"</html>";
 		}
 	}
 	public static class Statstone extends Stone{
-		private static final long serialVersionUID = 1L;
 		public final RuneModel model;
-		public final Color color;
 		public final byte minSlot;
 		public final byte maxSlot;
 		public final byte statId;
-		private Statstone(int statId,RuneModel model,Image image,Color color,String name,int id,int leastSlot,int mostSlot,int index){
-			super((byte)index,image,name,id);
-			this.color = color;
+		private Statstone(int statId,RuneModel model,String imageRoute,String name,int id,int leastSlot,int mostSlot,int index){
+			super((byte)index,imageRoute,name,id);
 			this.model = model;
 			this.minSlot = (byte)leastSlot;
 			this.maxSlot = (byte)mostSlot;
@@ -247,9 +212,6 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 			return -1;
 		}
 	}
-	private static Image resize(int dim,Image img){
-		return img == null ? null : img.getScaledInstance(dim, dim, Image.SCALE_SMOOTH);
-	}
 	public Rune parseRune(JSMap map){
 		JSList perks = JSON.toJSList(map.peek("selectedPerkIds"));
 		ArrayList<Stone> stoneList = new ArrayList<>(perks.size());
@@ -259,35 +221,21 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 		for(int i = 0;i < len;i++){
 			stoneList.add(stoneMap.get(perks.getInt(i)));
 		}
-		return new Rune(this, primaryPath, secondaryPath, stoneList);
+		return Rune.ofStones(this, primaryPath, secondaryPath, stoneList);
 	}
-	public Rune parseRune(String data){
-		data = data.toLowerCase(Locale.ROOT);
+	public Rune parseRune(String str){
+		str = str.toLowerCase(Locale.ROOT);
 		TreeMap<Integer,Stone> stones = new TreeMap<>();
 		for(Stone st : stoneMap.values()){//Link stones to their index of occurrence.
-			String word = st.getDescription().toLowerCase(Locale.ROOT);
-			int index = data.indexOf(word);
+			String word = st.name.toLowerCase(Locale.ROOT);
+			int index = str.indexOf(word);
 			int length = word.length();
 			while(index >= 0){
 				stones.putIfAbsent(index, st);
-				index = data.indexOf(word, index+length);
+				index = str.indexOf(word, index+length);
 			}
 		}
-		return new Rune(this, null, null, stones.values());
-	}
-	@Override
-	public Spliterator<Path> spliterator() {
-		return new ArrayIterator<>(paths);
-	}
-	@Override
-	public void forEach(Consumer<? super Path> action) {
-		for(Path pt : paths){
-			action.accept(pt);
-		}
-	}
-	@Override
-	public Path get(int index) {
-		return paths[index];
+		return Rune.ofStones(this, null, null, stones.values());
 	}
 	@Override
 	public int indexOf(Object o) {
@@ -301,25 +249,7 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 	}
 	@Override
 	public int lastIndexOf(Object o) {
-		if(o instanceof Path){
-			Path p = (Path)o;
-			if(p.model == this){
-				return p.order;
-			}
-		}
-		return -1;
-	}
-	@Override
-	public Iterator<Path> iterator() {
-		return new ArrayIterator<>(paths);
-	}
-	@Override
-	public ListIterator<Path> listIterator() {
-		return new ArrayIterator<>(paths);
-	}
-	@Override
-	public ListIterator<Path> listIterator(int index) {
-		return new ArrayIterator<>(paths, index);
+		return indexOf(o);
 	}
 	@Override
 	public boolean equals(Object o) {
@@ -328,14 +258,6 @@ public final class RuneModel extends AbstractList<RuneModel.Path>{
 	@Override
 	public int hashCode() {
 		return System.identityHashCode(this);
-	}
-	@Override
-	public int size() {
-		return paths.length;
-	}
-	@Override
-	public boolean isEmpty() {
-		return false;
 	}
 	@Override
 	public boolean contains(Object o) {

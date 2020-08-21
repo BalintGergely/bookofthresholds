@@ -8,7 +8,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import javax.swing.ButtonGroup;
 import javax.swing.DefaultButtonModel;
-import javax.swing.ImageIcon;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
@@ -195,7 +194,7 @@ public class RuneButtonGroup{
 				stoneList.add(runeModel.getStatstone(i,md.index));
 			}
 		}
-		return cachedRune = new Rune(runeModel,primary,secondary,stoneList);
+		return cachedRune = Rune.ofStones(runeModel,primary,secondary,stoneList);
 	}
 	public void addChangeListener(ChangeListener ls){
 		listenerList.add(ls);
@@ -276,7 +275,7 @@ public class RuneButtonGroup{
         private void fireBridge(){
         	super.fireStateChanged();
         }
-		public abstract ImageIcon getIcon();
+		public abstract Stone getStone();
 	}
 	private class PathButtonModel extends RuneButtonModel{
 		private static final long serialVersionUID = 1L;
@@ -348,7 +347,7 @@ public class RuneButtonGroup{
 			}
 		}
 		@Override
-		public ImageIcon getIcon() {
+		public Stone getStone() {
 			return path;
 		}
 	}
@@ -383,7 +382,7 @@ public class RuneButtonGroup{
 			}
 		}
 		@Override
-		public ImageIcon getIcon() {
+		public Stone getStone() {
 			PathButtonModel pt = primaryPath;
 			if(pt != null && pt.path.isValidStone(slot, index)){
 				return pt.path.getStone(slot, index);
@@ -441,7 +440,7 @@ public class RuneButtonGroup{
 			}
 		}
 		@Override
-		public ImageIcon getIcon() {
+		public Stone getStone() {
 			PathButtonModel pt = secondaryPath;
 			if(pt != null && pt.path.isValidStone(slot, index)){
 				return pt.path.getStone(slot, index);
@@ -478,7 +477,7 @@ public class RuneButtonGroup{
 			}
 		}
 		@Override
-		public ImageIcon getIcon() {
+		public Stone getStone() {
 			return runeModel.getStatstone(slot, index);
 		}
 	}

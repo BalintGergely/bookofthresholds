@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.Action;
 import javax.swing.ActionMap;
@@ -49,6 +50,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
+import javax.swing.SwingConstants;
 import javax.swing.ToolTipManager;
 import javax.swing.TransferHandler;
 import javax.swing.UIManager;
@@ -56,6 +58,7 @@ import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.LineBorder;
 import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
@@ -103,7 +106,7 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "1.2.2";
+	private static final String VERSION = "2.0.0";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -132,11 +135,11 @@ public class BookOfThresholds extends JFrame{
 		HttpClient client;
 		DataDragon dragon;
 		AssetManager assets = null;
-		ClientManager clm;
+		LCUManager clm;
 		System.out.println("Initializing Nexus...");
 		CompletableFuture<HttpResponse<Object>> versionCheckFuture = null;
 		try{
-			client = HttpClient.newBuilder().sslContext(ClientManager.makeContext()).build();
+			client = HttpClient.newBuilder().sslContext(LCUManager.makeContext()).build();
 			versionCheckFuture = doFinishUpdate != null ? null :
 					client.sendAsync(HttpRequest.newBuilder(new URI(GITHUB+"/version.json")).GET().build(),
 							JSONBodySubscriber.HANDLE_UTF8);
@@ -144,17 +147,17 @@ public class BookOfThresholds extends JFrame{
 				return;//In an extreme case where some download logic got messed up, we can bypass it.
 			}
 			System.out.println("Confronting Data Dragon...");
-			dragon = new DataDragon(new File("dataDragon.zip"), client);
+			dragon = new DataDragon(new File("dataDragon.zip"), client, "10.16.1");
 			System.out.println("Fetching Runeterran dictionary...");
 			String localeString;
 			try{
-				clm = new ClientManager(client);
-				localeString = clm.getLocale();
+				clm = new LCUManager(client);
+				localeString = clm.fetchLocale();
 			}catch(Throwable th){
 				clm = null;
 				localeString = null;
 			}
-			assets = new AssetManager(dragon, "10.16.1", localeString);
+			assets = new AssetManager(dragon, localeString);
 			JOptionPane.setDefaultLocale(assets.locale);
 			System.out.println("Securing Cloud to Earth...");
 			if(dragon.finish()){
@@ -206,6 +209,8 @@ public class BookOfThresholds extends JFrame{
 		}
 		if(clm == null){
 			JOptionPane.showMessageDialog(null, "Rune Book of Thresholds will not be able to export runes.");
+		}else{
+			clm.perkManager.setRuneModel(assets.runeModel);
 		}
 		/*{//Test code for rune permutations.
 			RuneModel model = assets.runeModel;
@@ -250,7 +255,7 @@ public class BookOfThresholds extends JFrame{
 							Champion champion = champ == null ? null : assets.champions.get(champ);
 							byte roles = bld.peekByte("roles");
 							buildList.add(new Build(name, champion, assets.runeModel.parseRune(bld), roles,
-									bld.peekLong("timestamp")));
+									bld.peekLong("order")));
 						}catch(Throwable t){
 							t.printStackTrace();
 						}
@@ -260,7 +265,7 @@ public class BookOfThresholds extends JFrame{
 				}
 			}
 			System.out.println("Initializing window...");
-			final ClientManager clientManager = clm;
+			final LCUManager clientManager = clm;
 			AssetManager assetProxy = assets;
 			EventQueue.invokeAndWait(() -> {
 				ToolTipManager.sharedInstance().setDismissDelay(Integer.MAX_VALUE);
@@ -281,9 +286,12 @@ public class BookOfThresholds extends JFrame{
 		System.out.println("We can store "+assets.runeModel.totalPermutationCount+" different runes!");
 		long nextSaveTime = 0;
 		CompletableFuture<String> shutdown = null;
+		AtomicBoolean k = runeBook.dataChangeFlag;
 		while(true){
-			while(!(runeBook.buildListModel.getChangeFlag() || runeBook.shutdownInitiated)){
-				runeBook.buildListModel.awaitChange();
+			synchronized(k){
+				while(!(k.get() || runeBook.shutdownInitiated)){
+					k.wait();
+				}
 			}
 			if(runeBook.shutdownInitiated && shutdown == null){
 				System.out.println("Shutdown initiated.");
@@ -293,26 +301,26 @@ public class BookOfThresholds extends JFrame{
 					shutdown = clm.close("Close command sent to client.");
 				}
 			}
-			if(runeBook.buildListModel.getChangeFlag()){
+			if(k.get()){
 				long currentTime = System.currentTimeMillis();
 				if(currentTime < nextSaveTime && !runeBook.shutdownInitiated){
-					synchronized(runeBook.buildListModel){
+					synchronized(k){
 						while((currentTime = System.currentTimeMillis()) < nextSaveTime && !runeBook.shutdownInitiated){
-							runeBook.buildListModel.wait(nextSaveTime-currentTime);
+							k.wait(nextSaveTime-currentTime);
 						}
 					}
 				}
 				if(!SAVE_FILE.exists()){
 					SAVE_FILE.createNewFile();
 				}
+				k.set(false);
 				List<Build> bls = runeBook.buildListModel.publicList;
 				JSList buildList = new JSList(bls.size());
-				runeBook.buildListModel.clearChangeFlag();
 				for(Build build : bls){
 					JSMap mp = build.getRune().toJSMap().put(
 							"name",build.getName(),
-							"roles",build.getRoles(),
-							"timestamp",build.getTimestamp());
+							"roles",build.getFlags(),
+							"order",build.getOrder());
 					Champion ch = build.getChampion();
 					if(ch != null){
 						mp.put("champion",ch.id);
@@ -339,16 +347,17 @@ public class BookOfThresholds extends JFrame{
 			}
 		}
 	}
+	private final AtomicBoolean dataChangeFlag = new AtomicBoolean();
 	private volatile boolean shutdownInitiated = false;
 	private AssetManager assetManager;
-	private ClientManager clientManager;
+	private LCUManager clientManager;
 	private JTextField nameField;
 	private JButton /*saveButton,*/eraseButton,completeButton,exportButton;
 	private BuildListModel buildListModel;
 	private LargeBuildPanel buildPanel;
 	private Rune currentRune;
 	private JPanel mainPanel;
-	private BookOfThresholds(AssetManager assets,ClientManager client,ArrayList<Build> builds){
+	private BookOfThresholds(AssetManager assets,LCUManager client,ArrayList<Build> builds){
 		super(assets.z.getString("window")+" "+VERSION);
 		super.setIconImage(assets.windowIcon);
 		this.assetManager = assets;
@@ -360,8 +369,9 @@ public class BookOfThresholds extends JFrame{
 			@Override
 			protected void paintComponent(Graphics g) {
 				super.paintComponent(g);
+				int offset = 0;//super.getComponent(0).getHeight();
 				int width = getWidth();
-				int height = getHeight();
+				int height = getHeight()-offset;
 				BufferedImage image = assetManager.background;
 				int imgheight = image.getHeight();
 				int imgwidth = image.getWidth();
@@ -383,7 +393,7 @@ public class BookOfThresholds extends JFrame{
 					gr.drawImage(assetManager.background, 0, 0, imgwidth, imgheight, null);
 					gr.dispose();
 				}
-				g.drawImage(temp, (width-imgwidth)/2, (height-imgheight)/2, imgwidth, imgheight, null);
+				g.drawImage(temp, (width-imgwidth)/2, offset+(height-imgheight)/2, imgwidth, imgheight, null);
 			}
 		};
 		mainPanel.setPreferredSize(new Dimension(1200, 675));//  3/4 the size of the image
@@ -398,7 +408,7 @@ public class BookOfThresholds extends JFrame{
 					assets.z.getString(client == null ? "exportCant" : "exportCan"),
 					false);
 			Border	basicBuildBorder = new LineBorder(new Color(0,true), 2, true),
-					selectdBuildBorder = new LineBorder(Color.WHITE, 2, true);
+					selectedBuildBorder = new LineBorder(Color.WHITE, 2, true);
 			BuildIcon rendererBuildIcon = new BuildIcon(false, assets);
 			JLabel rendererLabel = new JLabel(rendererBuildIcon);
 			rendererLabel.setDoubleBuffered(false);
@@ -426,27 +436,28 @@ public class BookOfThresholds extends JFrame{
 					new CompoundBorder(new LineBorder(new Color(0x8CBF73), 2),insideBorder),
 					new CompoundBorder(new LineBorder(new Color(0xC33C3D), 2),insideBorder),
 				};
-				client.setChangeListener(() -> {
+				ChangeListener ch = e -> {
 					int state = client.getState();
 					statusLabel.setText(assets.z.getString("state"+state));
 					statusLabel.setToolTipText(assets.z.getString("state"+state+"tt"));
 					statusLabel.setBorder(stateBorders[state]);
 					exportButton.setEnabled(state == 3);
-				});
+				};
+				client.addChangeListener(ch);
+				ch.stateChanged(null);
 				con.gridy++;
 				con.weighty = 1;
 				con.gridheight = 0;
-				HybridListModel<Build> hlm = client.getListModel(assetManager);
-				JList<Build> list = new JList<>(hlm);
+				JList<Build> list = new JList<>(client.perkManager);
 				list.setTransferHandler(transferer);
 				list.setDragEnabled(true);
 				list.setOpaque(false);
-				list.setSelectionModel(hlm);
+				list.setSelectionModel(client.perkManager);
 				list.setCellRenderer((JList<? extends Build> l, Build v, int index,
 							boolean isSelected, boolean cellHasFocus) -> {
 								rendererBuildIcon.setBuild(v);
 								rendererBuildIcon.setGridVariant(false);
-								rendererLabel.setBorder(isSelected ? selectdBuildBorder : basicBuildBorder);
+								rendererLabel.setBorder(isSelected ? selectedBuildBorder : basicBuildBorder);
 								return 	rendererLabel;
 							});
 				JScrollPane sp = new JScrollPane(list,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
@@ -472,8 +483,8 @@ public class BookOfThresholds extends JFrame{
 				toolBar.add(completeButton = toolButton(2,4,"FIX",assets.z.getString("fix"),true));
 				toolBar.add(nameField = new JTextField(16));
 				toolBar.add(eraseButton = toolButton(1,4,"ERASE",assets.z.getString("erase"),false));
-				toolBar.add(/*saveButton = */toolButton(0,4,"SAVE",assets.z.getString("save"),true));
-				mainPanel.add(toolBar,con);
+				toolBar.add(/*saveButton = */toolButton(1,3,"SAVE",assets.z.getString("save"),true));
+				mainPanel.add(toolBar, con, 0);
 			}
 			con.gridy = 1;con.weighty = 1;
 			ActionMap buildPanelActionMap;
@@ -500,7 +511,13 @@ public class BookOfThresholds extends JFrame{
 				aboutButton.addActionListener(this::actionPerformed);
 				mainPanel.add(aboutButton,con);
 			}
-			con.gridx++;con.gridy = 0;con.weightx = 1;con.gridheight = 0;
+			con.gridx++;con.gridy = 0;con.weightx = 1;/*con.gridheight = 1;
+			{
+				JToolBar toolBar = new JToolBar();
+				toolBar.setFloatable(false);
+				mainPanel.add(toolBar, con, 0);
+			}
+			con.gridy++;*/con.gridheight = 0;
 			{
 				JList<Build> list = new JList<>(buildListModel);
 				list.setTransferHandler(transferer);
@@ -510,11 +527,21 @@ public class BookOfThresholds extends JFrame{
 				list.setSelectionModel(buildListModel);
 				list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
 				list.setVisibleRowCount(0);
+				JLabel newBuildLabel = new JLabel(assetManager.imageIconForImage(0, 4));
+				newBuildLabel.setHorizontalTextPosition(SwingConstants.CENTER);
+				newBuildLabel.setVerticalTextPosition(SwingConstants.TOP);
+				newBuildLabel.setForeground(Color.WHITE);
+				String nblt = assetManager.z.getString("newRune");
 				list.setCellRenderer((JList<? extends Build> l, Build v, int index,
 						boolean isSelected, boolean cellHasFocus) -> {
+							if(v == null){
+								newBuildLabel.setText(isSelected ? nblt : "");
+								newBuildLabel.setBorder(isSelected ? selectedBuildBorder : basicBuildBorder);
+								return newBuildLabel;
+							}
 							rendererBuildIcon.setBuild(v);
 							rendererBuildIcon.setGridVariant(true);
-							rendererLabel.setBorder(isSelected ? selectdBuildBorder : basicBuildBorder);
+							rendererLabel.setBorder(isSelected ? selectedBuildBorder : basicBuildBorder);
 							return 	rendererLabel;
 						});
 				InputMap inputMap = list.getInputMap();
@@ -552,11 +579,13 @@ public class BookOfThresholds extends JFrame{
 		if (e.getID() == WindowEvent.WINDOW_CLOSING) {
 			super.dispose();
 			shutdownInitiated = true;
-			buildListModel.notifyChange();
+			synchronized(dataChangeFlag){
+				dataChangeFlag.notifyAll();
+			}
 		}
 	}
 	private JButton toolButton(int imgx,int imgy,String action,String toolTip,boolean enabled){
-		JButton button = new JButton(new ImageIcon(assetManager.iconSprites.getSubimage(imgx*24, imgy*24, 24, 24)));
+		JButton button = new JButton(assetManager.imageIconForImage(imgx, imgy));
 		button.setEnabled(enabled);
 		button.setToolTipText(toolTip);
 		button.setActionCommand(action);
@@ -565,6 +594,12 @@ public class BookOfThresholds extends JFrame{
 	}
 	private void stateChanged(ChangeEvent e){
 		if(e.getSource() == buildListModel){
+			if(buildListModel.isBeingModified()){
+				synchronized(dataChangeFlag){
+					dataChangeFlag.set(true);
+					dataChangeFlag.notifyAll();
+				}
+			}
 			if(buildListModel.getValueIsAdjusting()){
 				return;
 			}
@@ -572,7 +607,7 @@ public class BookOfThresholds extends JFrame{
 			if(selectedElement != null){
 				nameField.setText(selectedElement.getName());
 				buildPanel.setChampion(selectedElement.getChampion());
-				buildPanel.setSelectedRoles(selectedElement.getRoles());
+				buildPanel.setSelectedRoles(selectedElement.getFlags());
 				buildPanel.setRune(currentRune = selectedElement.getRune());
 			}
 			eraseButton.setEnabled(selectedElement != null);
@@ -589,7 +624,7 @@ public class BookOfThresholds extends JFrame{
 	void applyBuild(Build bld){
 		nameField.setText(bld.getName());
 		buildPanel.setChampion(bld.getChampion());
-		buildPanel.setSelectedRoles(bld.getRoles());
+		buildPanel.setSelectedRoles(bld.getFlags());
 		buildPanel.setRune(currentRune = bld.getRune());
 	}
 	AssetManager getAssetManager(){
@@ -613,7 +648,7 @@ public class BookOfThresholds extends JFrame{
 				if(build != null && 
 						(champion != build.getChampion()//Champion changed.
 								||(
-										!(Objects.equals(name, build.getName()) && roles == build.getRoles()) &&//Either name or roles changed
+										!(Objects.equals(name, build.getName()) && roles == build.getFlags()) &&//Either name or roles changed
 										!build.getRune().equals(currentRune)//Rune changed
 								)
 						)
@@ -629,25 +664,18 @@ public class BookOfThresholds extends JFrame{
 				}
 				if(build == null){
 					build = new Build(name, champion, currentRune, roles, System.currentTimeMillis());
-					buildListModel.insertBuild(build,0);
+					buildListModel.insertBuild(build,buildListModel.getPreferredInsertLocation());
 				}else{
 					build.setChampion(champion);
 					build.setName(name);
-					build.setRoles(roles);
+					build.setFlags(roles);
 					build.setRune(currentRune);
-					build.setTimestamp(System.currentTimeMillis());
 					buildListModel.buildChanged(build);
 				}
 			}break;
 		case "EXPORT":
 			if(currentRune.isComplete){
-				Build crt = buildListModel.getSelectedElement();
-				if(crt != null){
-					crt.setTimestamp(System.currentTimeMillis());
-					//We intentionally not notify the list model that the build has changed.
-					//It is not a bug.
-				}
-				clientManager.exportRune(currentRune, nameField.getText()).thenAcceptAsync(
+				clientManager.perkManager.exportRune(currentRune, nameField.getText()).thenAcceptAsync(
 						(Object str) -> {
 						if(str instanceof String){
 							JOptionPane.showMessageDialog(this, 
@@ -657,7 +685,7 @@ public class BookOfThresholds extends JFrame{
 							JOptionPane.showMessageDialog(this, 
 							assetManager.z.getString("errorCode")+" "+str, assetManager.z.getString("message"), JOptionPane.ERROR_MESSAGE);
 						}
-						}, ClientManager.EVENT_QUEUE);
+					}, LCUManager.EVENT_QUEUE);
 			}break;
 		case "ABOUT":
 			try{

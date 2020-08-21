@@ -173,7 +173,7 @@ Pattern.compile("^(?<champion>[a-zA-Z ]*) BUILD GUIDE.*^RUNES:(?<name>[^\\n]*)?$
 					}
 				}
 			}
-			return new Build("Mobafire Import", null, new Rune(mgr.runeModel, alpha, bravo, stoneList), (byte)0, System.currentTimeMillis());
+			return new Build("Mobafire Import", null, Rune.ofStones(mgr.runeModel, alpha, bravo, stoneList), (byte)0, System.currentTimeMillis());
 		}else if((mt = PAGE_PATTERN.matcher(data)).find()){
 			String chp = mt.group("champion");
 			String nm = mt.group("name");
@@ -200,7 +200,7 @@ Pattern.compile("^(?<champion>[a-zA-Z ]*) BUILD GUIDE.*^RUNES:(?<name>[^\\n]*)?$
 		StringBuilder builder = new StringBuilder("https://www.mobafire.com/league-of-legends/rune-page-planner#&rune=");
 		Path pt = rune.primaryPath;
 		int index = 0;
-		int limit = rune.stoneList.size();
+		int limit = rune.size();
 		for(int i = 0;i < 2;i++){
 			if(pt != null){
 				if(i == 1){
@@ -208,7 +208,7 @@ Pattern.compile("^(?<champion>[a-zA-Z ]*) BUILD GUIDE.*^RUNES:(?<name>[^\\n]*)?$
 				}
 				builder.append(pt.key);
 				b: while(index < limit){
-					Stone st = rune.stoneList.get(index);
+					Stone st = rune.get(index);
 					if(st instanceof Runestone){
 						Runestone rs = (Runestone)st;
 						if(rs.path == pt){
@@ -232,7 +232,7 @@ Pattern.compile("^(?<champion>[a-zA-Z ]*) BUILD GUIDE.*^RUNES:(?<name>[^\\n]*)?$
 		if(index < limit){
 			builder.append(":::Shards");
 			a: while(index < limit){
-				Statstone st = (Statstone)rune.stoneList.get(index);
+				Statstone st = (Statstone)rune.get(index);
 				int id = st.id;
 				for(int iter = 1;iter < ID_MAP.length;iter += 2){
 					if(STAT_ID_MAP[iter] == id){

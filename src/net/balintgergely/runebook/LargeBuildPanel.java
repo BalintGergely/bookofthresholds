@@ -15,14 +15,12 @@ import java.util.List;
 import java.util.function.Function;
 
 import javax.swing.GroupLayout;
-import javax.swing.Icon;
 import javax.swing.GroupLayout.Alignment;
 import javax.swing.GroupLayout.Group;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.LineBorder;
 import javax.swing.event.ChangeEvent;
-import javax.swing.ImageIcon;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -32,8 +30,8 @@ import javax.swing.JToggleButton;
 import javax.swing.JToolTip;
 
 import net.balintgergely.runebook.RuneButtonGroup.RuneButtonModel;
-import net.balintgergely.runebook.RuneModel.Path;
 import net.balintgergely.runebook.RuneModel.Runestone;
+import net.balintgergely.runebook.RuneModel.Stone;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -51,22 +49,27 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 								TYPE_STAT_MOD = 4;
 	private static final long serialVersionUID = 1L;
 	private static final String[] ROLE_NAMES = new String[]{"roleTop","roleMid","roleBot","roleJg","roleSp"};
-	private IdentityHashMap<Image, Image> grayscaleIconVariants = new IdentityHashMap<>();
+	private IdentityHashMap<Stone, Image> grayscaleIconVariants = new IdentityHashMap<>();
 	private static final Color TT_BACKGROUND = new Color(0xFF010A13),TT_FOREGROUND = new Color(0xFFCEC6B7);
 	private static final Border TT_BORDER = new CompoundBorder(new LineBorder(new Color(0xFF00080E),1), new LineBorder(new Color(0xFF463714), 2));
-	private Function<Image, Image> getGrayscaleImage = (Image a) -> {
-		RGBImageFilter filter = new RGBImageFilter(){
-			@Override
-			public int filterRGB(int x, int y, int rgb) {
-				int all = 
-						((rgb >>> 16) & 0xff)
-						+((rgb >>> 8) & 0xff)
-						+((rgb) & 0xff);
-				all /= 3;
-				return (rgb & 0xff000000) | (all << 16) | (all << 8) | all;
-			}
-		};
-		return createImage(new FilteredImageSource(a.getSource(), filter));
+	private AssetManager assets;
+	private Function<Stone, Image> getGrayscaleImage = (Stone a) -> {
+		Image img = assets.runeIcons.get(a);
+		if(img != null){
+			RGBImageFilter filter = new RGBImageFilter(){
+				@Override
+				public int filterRGB(int x, int y, int rgb) {
+					int all = 
+							((rgb >>> 16) & 0xff)
+							+((rgb >>> 8) & 0xff)
+							+((rgb) & 0xff);
+					all /= 3;
+					return (rgb & 0xff000000) | (all << 16) | (all << 8) | all;
+				}
+			};
+			return createImage(new FilteredImageSource(img.getSource(), filter));
+		}
+		return null;
 	};
 	private JComboBox<Champion> championBox;
 	private JLabel descriptionLabel;
@@ -101,6 +104,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 	}
 	public LargeBuildPanel(AssetManager assetManager){
 		super(null, false);
+		this.assets = assetManager;
 		super.setOpaque(false);
 		super.setBackground(new Color(0,true));
 		model = new RuneButtonGroup(assetManager.runeModel);
@@ -168,7 +172,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 			codeField.addActionListener((ActionEvent e) -> {
 				String str = codeField.getText();
 				try{
-					model.setRune(new Rune(model.runeModel,Long.parseLong(str, 36)));
+					model.setRune(Rune.ofPermutationCode(model.runeModel,Long.parseLong(str, 36)));
 					codeField.setBorder(completeBorder);
 				}catch(Throwable t){
 					codeField.setBorder(incorrectBorder);
@@ -276,6 +280,8 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 	public class RuneButton extends JToggleButton{
 		private static final long serialVersionUID = 1L;
 		private final byte type;
+		private Stone stone;
+		private Color color = Color.WHITE;
 		RuneButton(RuneButtonModel model,byte type){
 			super();
 			super.setModel(model);
@@ -287,7 +293,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 				super.addMouseListener(LargeBuildPanel.this);
 				super.addFocusListener(LargeBuildPanel.this);
 			}else{
-				super.setToolTipText(model.getIcon().getDescription());
+				super.setToolTipText(model.getStone().name);
 			}
 			LargeBuildPanel.this.add(this);
 		}
@@ -305,21 +311,19 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 			updateOnModel((RuneButtonModel)super.getModel());
 		}
 		private void updateOnModel(RuneButtonModel md){
-			ImageIcon ic = md.getIcon();
-			if((type == TYPE_SECONDARY_PATH || type == TYPE_STAT_MOD) && !md.isEnabled()){
-				ic = null;
-			}
-			if(ic == null){
-				super.setIcon(null);
+			stone = (type == TYPE_SECONDARY_PATH || type == TYPE_STAT_MOD) && !md.isEnabled() ? null : md.getStone();
+			if(stone == null){
 				super.setVisible(false);
 			}else{
-				super.setIcon(ic);
+				if(type != TYPE_STAT_MOD){
+					color = assets.runeColors.get(stone);
+				}
 				super.setVisible(true);
 			}
 		}
 		private int getPreferredDim(){
 			switch(type){
-			case TYPE_KEYSTONE:return RuneModel.KEYSTONE_SIZE;
+			case TYPE_KEYSTONE:return AssetManager.KEYSTONE_SIZE;
 			case TYPE_PRIMARY_PATH:
 			case TYPE_SECONDARY_PATH:
 			case TYPE_RUNESTONE:return 38;
@@ -343,21 +347,16 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		@Override
 		public void paint(Graphics graphics){
 			Graphics2D gr = (Graphics2D)graphics;
-			ImageIcon ic = (ImageIcon)getIcon();
-			if(ic != null){
-				Image id = ic.getImage();
-				int size = getPreferredDim();
-				int offset = (size-id.getWidth(null))/2;
+			if(stone != null){
 				boolean selected = super.getModel().isSelected();
 				boolean rollover = super.getModel().isRollover();
 				boolean armed = super.getModel().isArmed();
+				Image image = (armed || !rollover) && !selected ?
+								grayscaleIconVariants.computeIfAbsent(stone, getGrayscaleImage) :
+								assets.runeIcons.get(stone);
+				int size = getPreferredDim();
+				int offset = (size-image.getWidth(null))/2;
 				if(selected || armed){
-					Color color = Color.WHITE;
-					if(ic instanceof RuneModel.Runestone){
-						color = ((Runestone)ic).path.color;
-					}else if(ic instanceof RuneModel.Path){
-						color = ((Path)ic).color;
-					}
 					gr.setColor(color);
 					gr.setStroke(new BasicStroke(3));
 					gr.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -368,16 +367,12 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 						gr.drawOval(coffset, coffset, 33, 33);
 					}
 				}
-				if((armed || !rollover) && !selected){
-					id = grayscaleIconVariants.computeIfAbsent(id, getGrayscaleImage);
-				}
-				gr.drawImage(id, offset, offset, null);
+				gr.drawImage(image, offset, offset, null);
 			}
 		}
 		@Override
 		public String toString(){
-			Icon ic = super.getIcon();
-			return ic == null ? "" : ic.toString();
+			return stone instanceof Runestone ? ((Runestone)stone).description : null;
 		}
 	}
 	private static class GLG{

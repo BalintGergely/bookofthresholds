@@ -3,7 +3,6 @@ package net.balintgergely.util;
 import java.lang.reflect.Array;
 import java.util.AbstractCollection;
 import java.util.AbstractSet;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -21,188 +20,18 @@ import java.util.Map.Entry;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
-import java.util.function.UnaryOperator;
 
 interface Immutable {
 	private static int compare(String a,String b){
 		int c = a.compareTo(b);
 		return c < 0 ? -1 : (c > 0 ? 1 : 0);
 	}
-	public static class ImmutableList<E> extends AbstractCollection<E> implements List<E>,Immutable{
-		E[] data;
-		int offset,length;
+	public static class ImmutableList<E> extends ArrayListView.SubList<E> implements Immutable{
 		ImmutableList(E[] data){
-			this.data = data;
-			this.offset = 0;
-			this.length = data.length;
+			super(data,0,data.length);
 		}
 		private ImmutableList(E[] data,int offset,int length){
-			this.data = data;
-			this.offset = offset;
-			this.length = length;
-		}
-		@Override
-		public int size() {
-			return length;
-		}
-		@Override
-		public boolean isEmpty() {
-			return false;
-		}
-		@Override
-		public boolean contains(Object o) {
-			for(int i = 0;i < length;i++){
-				E e = data[i+offset];
-				if(o == null ? e == null : o.equals(e)){
-					return true;
-				}
-			}
-			return false;
-		}
-		@Override
-		public Object[] toArray() {
-			Object[] c = new Object[length];
-			System.arraycopy(data, offset, c, 0, length);
-			return c;
-		}
-		@Override
-		@SuppressWarnings("unchecked")
-		public <T> T[] toArray(T[] a) {
-			if(a.length < length){
-				a = (T[])Array.newInstance(a.getClass().getComponentType(), length);
-			}else if(a.length > length){
-				a[length] = null;
-			}
-			System.arraycopy(data, offset, a, 0, length);
-			return a;
-		}
-		@Override
-		public void replaceAll(UnaryOperator<E> operator) {
-			clear();
-		}
-		@Override
-		public void sort(Comparator<? super E> c) {
-			clear();
-		}
-		@Override
-		public ArrayIterator<E> iterator() {
-			return listIterator(0);
-		}
-		@Override
-		public ArrayIterator<E> spliterator() {
-			return listIterator(0);
-		}
-		@Override
-		public boolean removeIf(Predicate<? super E> filter) {
-			clear();
-			return false;
-		}
-		@Override
-		public void forEach(Consumer<? super E> action) {
-			for(E e : data){
-				action.accept(e);
-			}
-		}
-		@Override
-		public boolean add(E e) {
-			clear();
-			return false;
-		}
-		@Override
-		public E get(int index) {
-			return data[index];
-		}
-		@Override
-		public E set(int index, E element) {
-			clear();
-			return null;
-		}
-		@Override
-		public void add(int index, E element) {
-			clear();
-		}
-		@Override
-		public E remove(int index) {
-			clear();
-			return null;
-		}
-		@Override
-		public int indexOf(Object o) {
-			int i = 0;
-			while(i < length){
-				if(o == null ? data[offset+i] == null : o.equals(data[offset+i])){
-					return i;
-				}
-				i++;
-			}
-			return 0;
-		}
-		@Override
-		public int lastIndexOf(Object o) {
-			int i = offset+length;
-			while(i > offset){
-				i--;
-				if(o == null ? data[i] == null : o.equals(data[i])){
-					return i;
-				}
-			}
-			return -1;
-		}
-		@Override
-		public void clear() {
-			throw new UnsupportedOperationException();
-		}
-		@Override
-		public boolean addAll(int index, Collection<? extends E> c) {
-			clear();
-			return false;
-		}
-		@Override
-		public ArrayIterator<E> listIterator() {
-			return listIterator(0);
-		}
-		@Override
-		public ArrayIterator<E> listIterator(int index) {
-			return new ArrayIterator<>(data,offset,offset+index,offset+length);
-		}
-		@Override
-		public boolean equals(Object o) {
-			if(this == o){
-				return true;
-			}
-			if(o instanceof ImmutableList){
-				ImmutableList<?> od = (ImmutableList<?>)o;
-				return Arrays.equals(data, offset, offset+length, od.data, od.offset, od.offset+od.length);
-			}
-			return false;
-		}
-		@Override
-		public int hashCode() {
-			return Arrays.hashCode(data);
-		}
-		@Override
-		public <T> T[] toArray(IntFunction<T[]> generator) {
-			return toArray(generator.apply(length));
-		}
-		@Override
-		public boolean remove(Object o) {
-			clear();
-			return false;
-		}
-		@Override
-		public boolean addAll(Collection<? extends E> c) {
-			clear();
-			return false;
-		}
-		@Override
-		public boolean removeAll(Collection<?> c) {
-			clear();
-			return false;
-		}
-		@Override
-		public boolean retainAll(Collection<?> c) {
-			clear();
-			return false;
+			super(data,offset,length);
 		}
 		@Override
 		public List<E> subList(int fromIndex, int toIndex) {

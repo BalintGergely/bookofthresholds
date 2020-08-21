@@ -2,28 +2,34 @@ package net.balintgergely.runebook;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TreeMap;
 import java.util.zip.CRC32;
 import java.util.Map.Entry;
 import java.util.ResourceBundle.Control;
+import java.util.function.Function;
 
 import javax.imageio.ImageIO;
+import javax.swing.ImageIcon;
 
 import java.util.NavigableMap;
 import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
 import java.awt.Color;
 import java.awt.Graphics;
+import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
+import net.balintgergely.util.JSON;
+import net.balintgergely.runebook.RuneModel.*;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
-import net.balintgergely.util.JSON;
 
 class AssetManager {
 	public static final byte	TOP = 0x1,
@@ -31,6 +37,8 @@ class AssetManager {
 								BOTTOM = 0x4,
 								JUNGLE = 0x8,
 								SUPPORT = 0x10;
+	public static final int PATH_SIZE = 32,KEYSTONE_SIZE = 48,RUNESTONE_SIZE = 32,STAT_MOD_SIZE = 24;
+	public static final String LAST_KNOWN_GAME_VERSION = "10.16.1";
 	final RuneModel runeModel;
 	/**
 	 * Used when directly pasting from Mobafire.
@@ -38,22 +46,27 @@ class AssetManager {
 	final RuneModel englishRuneModel;
 	final NavigableMap<String,Champion> champions;
 	final NavigableMap<String,Champion> mobafireChampionMap;
+	final Map<RuneModel.Stone,Image> runeIcons;
+	final Map<RuneModel.Stone,Color> runeColors;
 	BufferedImage windowIcon;
 	BufferedImage iconSprites;
 	BufferedImage background;
 	PropertyResourceBundle z;
 	Locale locale;
-	AssetManager(DataDragon dragon,String gameVersion,String locale) throws IOException{
+	@SuppressWarnings("unchecked")
+	AssetManager(DataDragon dragon,String locale) throws IOException{
 		Locale l = null;
 		if(locale == null){
 			locale = (String)dragon.fetchObject("locale.txt");
 		}else{
 			dragon.putString("locale.txt", locale);//This time we got to retrieve client locale. Store it.
 		}
+		JSMap manifest = dragon.getManifest();
+		JSMap n = manifest.getJSMap("n");
+		String en = manifest.getString("l");
 		if(locale == null){//We have yet to retrieve the locale from the LCU. Use data dragon.
 			l = Locale.getDefault();
 			JSList localeData = JSON.asJSList(dragon.fetchObject("languages.json"), true);
-			@SuppressWarnings("unchecked")
 			List<String> localeList = (List<String>)(List<?>)localeData.list;
 			a: for(Locale lc : Control.getControl(Control.FORMAT_DEFAULT).getCandidateLocales("", l)){
 				String tag = lc.toLanguageTag().toLowerCase(Locale.ROOT).replace('-', '_');
@@ -65,14 +78,14 @@ class AssetManager {
 				}
 			}//This might be a bad way to do it. We basically default to system locale if supported by LCU.
 			if(locale == null){
-				locale = "en_US";//Not even LCU supports the system locale. Default to english.
+				locale = en;//Not even LCU supports the system locale. Default to english.
 			}
 		}
-		boolean isEnglish = locale.equals("en_US");
+		boolean isEnglish = locale.equals(en);
 		if(isEnglish){
 			l = null;
 		}
-		//This logic is needed for Mobafire. en_US always corresponds to the root bundle.
+		//This logic is needed for Mobafire.
 		if(l == null){
 			try{
 				l = Locale.forLanguageTag(locale.replace('_', '-'));
@@ -87,16 +100,16 @@ class AssetManager {
 		}
 		Locale.setDefault(l);
 		z = (PropertyResourceBundle) ResourceBundle.getBundle("locale",isEnglish ? Locale.ROOT : l);
-		JSMap championData = JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/"+locale+"/championFull.json"), true).getJSMap("data");
+		JSMap championData = JSON.asJSMap(dragon.fetchObject(n.getString("champion")+"/data/"+locale+"/champion.json"), true).getJSMap("data");
 		JSMap englishChampionData = isEnglish ? championData : 
-			JSON.asJSMap(dragon.fetchObject(gameVersion+"/data/"+locale+"/champion.json"), true).getJSMap("data");
-		JSList runeData = JSON.asJSList(dragon.fetchObject(gameVersion+"/data/"+locale+"/runesReforged.json"), true);
+			JSON.asJSMap(dragon.fetchObject(n.getString("champion")+"/data/"+en+"/champion.json"), true).getJSMap("data");
+		JSList runeData = JSON.asJSList(dragon.fetchObject(n.getString("rune")+"/data/"+locale+"/runesReforged.json"), true);
 		this.locale = l;
-		JSList englishRuneData = isEnglish ? null : JSON.asJSList(dragon.fetchObject(gameVersion+"/data/en_US/runesReforged.json"), true);
+		JSList englishRuneData = isEnglish ? null : JSON.asJSList(dragon.fetchObject(n.getString("rune")+"/data/"+en+"/runesReforged.json"), true);
 		HashSet<String> imageCollection = new HashSet<>();
 		JSON.forEachMapEntry(championData, (String key,Object value) -> {
 			if("image".equals(key)){
-				imageCollection.add(gameVersion+"/img/sprite/"+JSON.asJSMap(value, true).getString("sprite"));
+				imageCollection.add(n.getString("champion")+"/img/sprite/"+JSON.asJSMap(value, true).getString("sprite"));
 			}
 		},1);
 		JSON.forEachMapEntry(runeData, (String key,Object value) -> {
@@ -104,18 +117,41 @@ class AssetManager {
 				imageCollection.add("img/"+JSON.asString(value, true, null));
 			}
 		},-1);
-		String iconPath = gameVersion+"/img/spell/"+championData.getDeep("Yuumi","spells",3,"image","full");
+		//Instead of getting championFull.json just to fetch Last Chapter's icon, we directly go to her file.
+		String iconPath = n.getString("champion")+"/img/spell/"+
+						JSON.asJSMap(dragon.fetchObject(n.getString("champion")+"/data/en_US/champion/Yuumi.json"),true)
+						.getDeep("data","Yuumi","spells",3,"image","full");
 		imageCollection.add(iconPath);
 		dragon.batchPreload(imageCollection);
-		{//Rune Book? Book with power? Why not? Also the reason we need championFull.json which is kinda big. In the future we can improve on this.
-			BufferedImage windIc = (BufferedImage)dragon.fetchObject(iconPath);//Here, Ryze's passive icon is another big candidate.
-			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
-			windowIcon = windIc.getSubimage(0, hy, hx, hy);
-		}
-		runeModel = new RuneModel(runeData, (String str) -> (BufferedImage)dragon.fetchObject("img/"+str), z);
+
+		runeModel = new RuneModel(runeData, z);
 		//Additionally to a localized rune model, we need an english variant just for Mobafire insertion.
 		englishRuneModel = isEnglish ? runeModel : 
-			new RuneModel(englishRuneData, null, (PropertyResourceBundle) ResourceBundle.getBundle("locale",Locale.ROOT));
+			new RuneModel(englishRuneData, (PropertyResourceBundle) ResourceBundle.getBundle("locale",Locale.ROOT));
+		runeIcons = new HashMap<>();
+		runeColors = new HashMap<>();
+		Function<Stone,Image> imageFetcher = s -> (BufferedImage)dragon.fetchObject("img/"+s.imageRoute);
+		Function<Stone,Color> colorFetcher = s -> averagePixels((BufferedImage)runeIcons.computeIfAbsent(s,imageFetcher));
+		for(Stone st : runeModel.stoneMap.values()){
+			if(st instanceof Path || st instanceof Statstone){
+				runeColors.computeIfAbsent(st,colorFetcher);
+			}else{
+				runeIcons.computeIfAbsent(st,imageFetcher);
+				runeColors.put(st,runeColors.computeIfAbsent(((Runestone)st).path,colorFetcher));
+			}
+		}
+		for(Map.Entry<Stone,Image> entry : runeIcons.entrySet()){
+			Stone st = entry.getKey();
+			int scale;
+			if(st instanceof Path){
+				scale = PATH_SIZE;
+			}else if(st instanceof Runestone){
+				scale = ((Runestone)st).slot == 0 ? KEYSTONE_SIZE : RUNESTONE_SIZE;
+			}else{
+				scale = STAT_MOD_SIZE;
+			}
+			entry.setValue(entry.getValue().getScaledInstance(scale, scale, Image.SCALE_SMOOTH));
+		}
 		TreeMap<String,Champion> champ = new TreeMap<>();
 		TreeMap<String,Champion> engChamp = new TreeMap<>();
 		for(Entry<String,Object> entry : championData.map.entrySet()){
@@ -123,14 +159,19 @@ class AssetManager {
 			JSMap champion = JSON.asJSMap(entry.getValue(),true);
 			JSMap image = champion.getJSMap("image");
 			Champion ch = new Champion(key,champion.getString("name"),
-					(BufferedImage)dragon.fetchObject(gameVersion+"/img/sprite/"+image.getString("sprite")),
+					(BufferedImage)dragon.fetchObject(n.getString("champion")+"/img/sprite/"+image.getString("sprite")),
 					image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h"));
 			engChamp.put(englishChampionData.getJSMap(key).getString("name").toUpperCase(Locale.ROOT),ch);
 			champ.put(key,ch);
 		}
 		champions = Collections.unmodifiableNavigableMap(champ);
 		mobafireChampionMap = Collections.unmodifiableNavigableMap(engChamp);
-		iconSprites = loadImageWithHash("icons.png",491867024l);//Absolutely NO tampering please!
+		{//Rune Book? Book with power? Why not? Also the reason we need championFull.json which is kinda big. In the future we can improve on this.
+			BufferedImage windIc = (BufferedImage)dragon.fetchObject(iconPath);//Here, Ryze's passive icon is another big candidate.
+			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
+			windowIcon = windIc.getSubimage(0, hy, hx, hy);
+		}
+		iconSprites = loadImageWithHash("icons.png",1957051651l);//Absolutely NO tampering please!
 		background = loadImageWithHash("background.png",1433901601l);
 	}
 	BufferedImage loadImageWithHash(String name,long checksum) throws IOException{
@@ -149,6 +190,9 @@ class AssetManager {
 	}
 	Champion[] getChampions(){
 		return champions.values().toArray(Champion[]::new);
+	}
+	public ImageIcon imageIconForImage(int imgx,int imgy){
+		return new ImageIcon(iconSprites.getSubimage(imgx*24, imgy*24, 24, 24));
 	}
 	public static Color averagePixels(BufferedImage img){
 		double redSum = 0,blueSum = 0,greenSum = 0,alphaSum = 0;

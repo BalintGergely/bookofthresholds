@@ -11,6 +11,7 @@ import javax.swing.AbstractListModel;
 import javax.swing.DefaultListSelectionModel;
 import javax.swing.ListModel;
 import javax.swing.ListSelectionModel;
+import javax.swing.event.ChangeListener;
 import javax.swing.event.ListDataEvent;
 import javax.swing.event.ListDataListener;
 import javax.swing.event.ListSelectionEvent;
@@ -23,40 +24,51 @@ import javax.swing.event.ListSelectionListener;
  */
 @SuppressWarnings("unused")
 public class BuildListModel extends HybridListModel<Build>{
-	private static final Comparator<Build> BY_TIMESTAMP = (Build a,Build b) -> Long.compare(b.getTimestamp(), a.getTimestamp());
+	private static final Comparator<Build> BY_ORDER = (Build a,Build b) -> Long.compare(a.getOrder(), b.getOrder());
 	private static final long serialVersionUID = 1L;
 	public final List<Build> publicList;
-	private volatile boolean changeFlag;
-	private List<Build> fullList;
+	private CopyOnWriteArrayList<Build> fullList;
 	private List<Build> list;
 	public BuildListModel(Collection<Build> initials) {
 		fullList = new CopyOnWriteArrayList<>(initials);
-		fullList.sort(BY_TIMESTAMP);
+		fullList.sort(BY_ORDER);
+		int size = fullList.size();
+		for(int i = 0;i < size;i++){
+			fullList.get(i).setOrder(i);
+		}
 		publicList = Collections.unmodifiableList(fullList);
 		list = new ArrayList<Build>(fullList);
 	}
 	@Override
 	public int getSize() {
-		return list.size();
+		return list.size()+1;
 	}
 	@Override
 	public Build getElementAt(int index) {
-		return list.get(index);
+		return index == list.size() ? null : list.get(index);
 	}
-	public Build getSelectedElement() {
-		return selectedIndex >= 0 ? list.get(selectedIndex) : null;
+	private void sweepUpdateOrder(int fromIndex,int toIndex){
+		toIndex = Math.min(toIndex, list.size()-1);
+		while(fromIndex <= toIndex){
+			list.get(fromIndex).setOrder(fromIndex);
+			fromIndex++;
+		}
+	}
+	public int getPreferredInsertLocation(){
+		return (selectedIndex == list.size()) ? selectedIndex : 0;
 	}
 	public void insertBuild(Build build,int index){
 		antiRecurse = true;
 		try{
-			if(fullList.add(build)){
+			if(fullList.addIfAbsent(build)){
 				try{
+					index = Math.min(index,list.size());
 					list.add(index, build);
+					sweepUpdateOrder(index, Integer.MAX_VALUE);
 					fireIntervalAdded(this, index, index);
 					moveSelection(index);
 					fireStateChanged();
 				}finally{
-					changeFlag = true;
 					synchronized(fullList){
 						fullList.notifyAll();
 					}
@@ -70,6 +82,7 @@ public class BuildListModel extends HybridListModel<Build>{
 		antiRecurse = true;
 		try{
 			if(fullList.contains(build)){
+				index = Math.min(index,list.size());
 				int dex = list.indexOf(build);
 				if(dex >= 0){
 					if(dex == index || dex == index-1){
@@ -79,8 +92,11 @@ public class BuildListModel extends HybridListModel<Build>{
 					if(index > dex){
 						index--;
 					}
+				}else{
+					dex = Integer.MAX_VALUE;
 				}
 				list.add(index, build);
+				sweepUpdateOrder(Math.min(index, dex), Math.max(index, dex));
 				if(dex >= 0){
 					fireContentsChanged(this, index, dex);
 				}else{
@@ -101,6 +117,7 @@ public class BuildListModel extends HybridListModel<Build>{
 					int index = list.indexOf(build);
 					if(index >= 0){
 						list.remove(index);
+						sweepUpdateOrder(index,Integer.MAX_VALUE);
 						fireIntervalRemoved(this, index, index);
 						if(selectedIndex == index){
 							moveSelection(-1);
@@ -108,7 +125,6 @@ public class BuildListModel extends HybridListModel<Build>{
 						fireStateChanged();
 					}
 				}finally{
-					changeFlag = true;
 					synchronized(fullList){
 						fullList.notifyAll();
 					}
@@ -132,7 +148,6 @@ public class BuildListModel extends HybridListModel<Build>{
 						fireStateChanged();
 					}
 				}finally{
-					changeFlag = true;
 					synchronized(fullList){
 						fullList.notifyAll();
 					}
@@ -145,46 +160,21 @@ public class BuildListModel extends HybridListModel<Build>{
 	public void buildChanged(Build build){
 		antiRecurse = true;
 		try{
-			int i = list.indexOf(build);
-			if(i >= 0){
-				try{
-					fireContentsChanged(this, i, i);
-					fireStateChanged();
-				}finally{
-					changeFlag = true;
-					synchronized(fullList){
-						fullList.notifyAll();
+			if(fullList.contains(build)){
+				int i = list.indexOf(build);
+				if(i >= 0){
+					try{
+						fireContentsChanged(this, i, i);
+					}finally{
+						synchronized(fullList){
+							fullList.notifyAll();
+						}
 					}
 				}
+				fireStateChanged();
 			}
 		}finally{
 			antiRecurse = false;
 		}
-	}
-	public void awaitChange() throws InterruptedException{
-		synchronized(fullList){
-			fullList.wait();
-		}
-	}
-	public void awaitChange(long timeoutMillis) throws InterruptedException{
-		synchronized(fullList){
-			fullList.wait(timeoutMillis);
-		}
-	}
-	public void awaitChange(long timeoutMillis,int nanos) throws InterruptedException{
-		synchronized(fullList){
-			fullList.wait(timeoutMillis,nanos);
-		}
-	}
-	public void notifyChange(){
-		synchronized(fullList){
-			fullList.notifyAll();
-		}
-	}
-	void clearChangeFlag(){
-		changeFlag = false;
-	}
-	boolean getChangeFlag(){
-		return changeFlag;
 	}
 }

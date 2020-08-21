@@ -125,7 +125,11 @@ class BuildTransferHandler extends TransferHandler {
 				pt.y -= rct.y;
 				super.setDragImageOffset(pt);
 			}
-			tr = new BuildTransferable(c,(Build)model.getElementAt(index));
+			Build bld = (Build)model.getElementAt(index);
+			if(bld == null){
+				return null;
+			}
+			tr = new BuildTransferable(c,bld);
 		}else if(c instanceof LargeBuildPanel){
 			tr = new BuildTransferable(c, bot.createBuild());
 		}else{

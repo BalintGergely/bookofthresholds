@@ -38,7 +38,7 @@ public class BuildIcon implements Icon{
 		this.build = build;
 	}
 	public static BufferedImage toImage(AssetManager mgr,Build bld){
-		boolean gridVariant = ((bld.getRoles() & 0x1F) != 0) || (bld.getChampion() != null);
+		boolean gridVariant = ((bld.getFlags() & 0x1F) != 0) || (bld.getChampion() != null);
 		BufferedImage image = new BufferedImage(gridVariant ? G_WIDTH : F_WIDTH, gridVariant ? G_HEIGHT : F_HEIGHT, BufferedImage.TYPE_INT_ARGB);
 		Graphics gr = image.getGraphics();
 		renderBuild(mgr, bld, gridVariant, gr, 0, 0);
@@ -56,7 +56,7 @@ public class BuildIcon implements Icon{
 		if(gridVariant){
 			y += 12;
 			Champion champion = build.getChampion();
-			byte roles = build.getRoles();
+			byte roles = build.getFlags();
 			if(champion != null){
 				Graphics ngr = gr.create(x+72, y, 48, 48);
 				ngr.setClip(new Ellipse2D.Float(2, 2, 44, 44));
@@ -66,6 +66,7 @@ public class BuildIcon implements Icon{
 			mgr.paintRoleIcon(gr, roles, x+48, y);
 		}
 		if(rune != null){
+			boolean lockFlag = (build.getFlags() & 0x40) != 0;
 			Runestone keystone = rune.getKeystone();
 			if(gridVariant){
 				gr.setColor(GLASS_PANE_COLOR);
@@ -73,26 +74,26 @@ public class BuildIcon implements Icon{
 				if(keystone == null){
 					if(rune.primaryPath != null){
 						gr.fillOval(x+12, y+24, 24, 24);
-						gr.drawImage(rune.primaryPath.getImage(), x+12, y+24, 24, 24, null);
+						gr.drawImage(mgr.runeIcons.get(rune.primaryPath), x+12, y+24, 24, 24, null);
 					}
 				}else{
-					gr.drawImage(keystone.getImage(), x, y, 48, 48, null);
+					gr.drawImage(mgr.runeIcons.get(keystone), x, y, 48, 48, null);
 				}
 				if(rune.secondaryPath != null){
-					gr.drawImage(rune.secondaryPath.getImage(), x+48, y+24, 24, 24, null);
+					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+48, y+24, 24, 24, null);
 				}
 				x += 24;
 				y += 50;
 			}else{
 				if(keystone == null){
 					if(rune.primaryPath != null){
-						gr.drawImage(rune.primaryPath.getImage(), x, y, 32, 32, null);
+						gr.drawImage(mgr.runeIcons.get(rune.primaryPath), x, y, 32, 32, null);
 					}
 				}else{
-					gr.drawImage(keystone.getImage(), x-4, y-4, 48, 48, null);
+					gr.drawImage(mgr.runeIcons.get(keystone), x-4, y-4, 48, 48, null);
 				}
 				if(rune.secondaryPath != null){
-					gr.drawImage(rune.secondaryPath.getImage(), x+20, y+16, 24, 24, null);
+					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+20, y+16, 24, 24, null);
 				}
 				x += 64;
 				y += 14;
@@ -101,38 +102,65 @@ public class BuildIcon implements Icon{
 			RuneModel model = rune.model;
 			for(int p = 0;p < 3;p++){
 				gr.setColor(GLASS_PANE_COLOR);
-				gr.fillRoundRect(x-17, y-2, 33, 28, 8, 8);
+				gr.fillRoundRect(x-17, y-2, 33, 27, 8, 8);
 				if(p == 2){
 					int slots = model.getStatSlotCount();
 					for(int i = 0;i < slots;i++){
 						Statstone stone = (Statstone)rune.getSelectedStone(2, i);
 						int stones = model.getStatSlotLength(i);
 						int offset = -stones*4;
-						int searchFor = stone == null ? -1 : stone.order;
-						for(int k = 0;k < stones;k++){
-							gr.setColor(k == searchFor ? stone.color : Color.DARK_GRAY);
-							gr.fillOval(offset+x+k*8, y, 7, 7);
-						}
+						/*if(lockFlag){
+							gr.setColor(Color.DARK_GRAY);
+							gr.fillRect(x-16, y+3, 32, 2);
+							if(stone != null){
+								gr.setColor(mgr.runeColors.get(stone));
+								gr.fillOval(offset+x+stone.order*8, y, 7, 7);
+							}
+						}else{*/
+							int searchFor = stone == null ? -1 : stone.order;
+							for(int k = 0;k < stones;k++){
+								gr.setColor(k == searchFor ? mgr.runeColors.get(stone) : Color.DARK_GRAY);
+								if(lockFlag && k != searchFor){
+									gr.fillRect(offset+x+k*8+1, y+3, 6, 2);
+								}else{
+									gr.fillOval(offset+x+k*8, y, 7, 7);
+								}
+							}
+						//}
 						y += 8;
 					}
 					y -= slots*8;
 					gr.setColor(STAT_MOD_BORDER);
 				}else if(path != null){
 					int slots = path.getSlotCount();
+					Color pathColor = mgr.runeColors.get(path);
 					for(int i = 1;i < slots;i++){
 						int stones = path.getStoneCountInSlot(i);
 						int offset = -stones*4;
 						int searchFor = rune.getSelectedIndex(p, i);
-						for(int k = 0;k < stones;k++){
-							gr.setColor(k == searchFor ? path.color : Color.DARK_GRAY);
-							gr.fillOval(offset+x+k*8, y, 7, 7);
-						}
+						/*if(lockFlag){
+							gr.setColor(Color.DARK_GRAY);
+							gr.fillRect(x-16, y+3, 32, 2);
+							if(searchFor >= 0){
+								gr.setColor(pathColor);
+								gr.fillOval(offset+x+searchFor*8, y, 7, 7);
+							}
+						}else{*/
+							for(int k = 0;k < stones;k++){
+								gr.setColor(k == searchFor ? pathColor : Color.DARK_GRAY);
+								if(lockFlag && k != searchFor){
+									gr.fillRect(offset+x+k*8+1, y+3, 6, 2);
+								}else{
+									gr.fillOval(offset+x+k*8, y, 7, 7);
+								}
+							}
+						//}
 						y += 8;
 					}
 					y -= (slots-1)*8;
-					gr.setColor(path.color);
+					gr.setColor(pathColor);
 				}
-				gr.drawRoundRect(x-17, y-2, 33, 28, 10, 10);
+				gr.drawRoundRect(x-17, y-2, 33, 27, 10, 10);
 				path = rune.secondaryPath;
 				x += 36;
 			}

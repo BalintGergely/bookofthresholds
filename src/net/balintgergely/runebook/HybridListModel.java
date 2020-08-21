@@ -35,6 +35,15 @@ public abstract class HybridListModel<E> extends AbstractListModel<E> implements
 			}
 		}
 	}
+	/**
+	 * @return True if currently within a structurally modifying event. False otherwise.
+	 */
+	public boolean isBeingModified(){
+		return antiRecurse;
+	}
+	public E getSelectedElement() {
+		return selectedIndex >= 0 ? getElementAt(selectedIndex) : null;
+	}
 	@Override
 	public void addListDataListener(ListDataListener l) {
 		listenerList.add(ListDataListener.class, l);

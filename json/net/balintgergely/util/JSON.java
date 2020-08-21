@@ -614,6 +614,16 @@ public final class JSON {
 		return null;
 	}
 	@SuppressWarnings("unchecked")
+	public static JSMap asJSMap(Object obj){
+		if(obj instanceof JSMap){
+			return (JSMap) obj;
+		}
+		if(obj instanceof Map){
+			return new JSMap((Map<String,Object>)obj);
+		}
+		throw new NoSuchElementException();
+	}
+	@SuppressWarnings("unchecked")
 	public static JSList asJSList(Object obj,boolean e){
 		if(obj instanceof JSList){
 			return (JSList) obj;
@@ -625,6 +635,16 @@ public final class JSON {
 			throw new NoSuchElementException();
 		}
 		return null;
+	}
+	@SuppressWarnings("unchecked")
+	public static JSList asJSList(Object obj){
+		if(obj instanceof JSList){
+			return (JSList) obj;
+		}
+		if(obj instanceof List){
+			return new JSList((List<Object>)obj);
+		}
+		throw new NoSuchElementException();
 	}
 	@SuppressWarnings("unchecked")
 	public static JSMap toJSMap(Object obj){
@@ -853,21 +873,9 @@ public final class JSON {
 	 */
 	public static Object freeze(Object value){
 		if(value instanceof JSMap){
-			JSMap j = ((JSMap)value);
-			Map<String,Object> f = freezeMap(j.map);
-			if(f == j.map){
-				return j;
-			}else{
-				return new JSMap(f);
-			}
+			return freeze((JSMap)value);
 		}else if(value instanceof JSList){
-			JSList j = ((JSList)value);
-			List<Object> f = freezeList(j.list);
-			if(f == j.list){
-				return j;
-			}else{
-				return new JSList(f);
-			}
+			return freeze((JSList)value);
 		}else if(value == null
 					|| value instanceof Enum//We always take Enum.name() of enums as their string representation because that definitely cannot change.
 					|| value instanceof Boolean
@@ -911,6 +919,22 @@ public final class JSON {
 			return new JSList(new Immutable.ImmutableList<>(data));
 		}
 		return value.toString();//May return null.
+	}
+	public static JSMap freeze(JSMap j){
+		Map<String,Object> f = freezeMap(j.map);
+		if(f == j.map){
+			return j;
+		}else{
+			return new JSMap(f);
+		}
+	}
+	public static JSList freeze(JSList j){
+		List<Object> f = freezeList(j.list);
+		if(f == j.list){
+			return j;
+		}else{
+			return new JSList(f);
+		}
 	}
 	public static void forEachMapEntry(Object obj,BiConsumer<String,Object> cns,int maxDepth){
 		if(obj instanceof JSMap){

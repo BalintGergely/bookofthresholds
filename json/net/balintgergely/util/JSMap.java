@@ -48,9 +48,9 @@ public final class JSMap{
 		map.put(String.valueOf(key), wrap(value));
 		return this;
 	}
-	public JSMap put(Object... valueAndKeyPairs){
-		for(int i = 0;i < valueAndKeyPairs.length;i += 2){
-			map.put(String.valueOf(valueAndKeyPairs[i]), wrap(valueAndKeyPairs[i+1]));
+	public JSMap put(Object... keyAndValuePairs){
+		for(int i = 0;i < keyAndValuePairs.length;i += 2){
+			map.put(String.valueOf(keyAndValuePairs[i]), wrap(keyAndValuePairs[i+1]));
 		}
 		return this;
 	}
