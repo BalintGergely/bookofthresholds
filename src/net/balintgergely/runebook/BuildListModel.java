@@ -29,7 +29,7 @@ public class BuildListModel extends HybridListModel<Build>{
 	public final List<Build> publicList;
 	private CopyOnWriteArrayList<Build> fullList;
 	private List<Build> list;
-	private boolean isByOrder = true;
+	private Comparator<Build> sortingOrder = BY_ORDER;
 	public BuildListModel(Collection<Build> initials) {
 		fullList = new CopyOnWriteArrayList<>(initials);
 		fullList.sort(BY_ORDER);
@@ -49,7 +49,7 @@ public class BuildListModel extends HybridListModel<Build>{
 		return index == list.size() ? null : list.get(index);
 	}
 	private void sweepUpdateOrder(int fromIndex,int toIndex){
-		if(isByOrder){
+		if(sortingOrder == BY_ORDER){
 			toIndex = Math.min(toIndex, list.size()-1);
 			while(fromIndex <= toIndex){
 				list.get(fromIndex).setOrder(fromIndex);
@@ -61,15 +61,13 @@ public class BuildListModel extends HybridListModel<Build>{
 		return (selectedIndex == list.size()) ? selectedIndex : 0;
 	}
 	public void sortByOrder(){
-		if(!isByOrder){
-			isByOrder = true;
-			list.sort(BY_ORDER);
+		if(sortingOrder != BY_ORDER){
+			list.sort(sortingOrder = BY_ORDER);
 			fireContentsChanged(this, 0, list.size()-1);
 		}
 	}
 	public void sortForChampion(Object ch){
-		isByOrder = false;
-		list.sort((a,b) -> {
+		list.sort(sortingOrder = (a,b) -> {
 			if(a.getChampion() == ch){
 				if(b.getChampion() == ch){
 					return 0;
@@ -84,22 +82,55 @@ public class BuildListModel extends HybridListModel<Build>{
 		});
 		fireContentsChanged(this, 0, list.size()-1);
 	}
+	private int findProperIndex(int index,Build build){
+		if(sortingOrder == BY_ORDER){
+			return Math.min(index,list.size());
+		}else if(list.isEmpty()){
+			return 0;
+		}else{
+			int minIndex = 0,maxIndex = list.size()-1;
+			while(true){//Binary search to identify a minimum and a maximum index.
+				int midIndex = (minIndex+maxIndex) >>> 1;
+				int cmp = sortingOrder.compare(list.get(midIndex),build);
+				if(cmp < 0){
+					minIndex = midIndex+1;
+				}else if(cmp > 0){
+					maxIndex = midIndex-1;
+				}else{
+					if(index < midIndex){
+						if(index < minIndex){
+							index = minIndex;
+						}
+						while(index < midIndex && sortingOrder.compare(list.get(index),build) < 0){
+							index++;
+						}
+					}else if(index > midIndex){
+						if(index > maxIndex){
+							index = maxIndex+1;
+						}
+						midIndex++;
+						while(index > midIndex && sortingOrder.compare(list.get(index-1),build) > 0){
+							index--;
+						}
+					}
+					return index;
+				}
+				if(minIndex > maxIndex){
+					return minIndex;//Exactly one place to insert to.
+				}
+			}
+		}
+	}
 	public void insertBuild(Build build,int index){
 		antiRecurse = true;
 		try{
 			if(fullList.addIfAbsent(build)){
-				try{
-					index = Math.min(index,list.size());
-					list.add(index, build);
-					sweepUpdateOrder(index, Integer.MAX_VALUE);
-					fireIntervalAdded(this, index, index);
-					moveSelection(index);
-					fireStateChanged();
-				}finally{
-					synchronized(fullList){
-						fullList.notifyAll();
-					}
-				}
+				index = findProperIndex(index, build);
+				list.add(index, build);
+				sweepUpdateOrder(index, Integer.MAX_VALUE);
+				fireIntervalAdded(this, index, index);
+				moveSelection(index);
+				fireStateChanged();
 			}
 		}finally{
 			antiRecurse = false;
@@ -109,7 +140,7 @@ public class BuildListModel extends HybridListModel<Build>{
 		antiRecurse = true;
 		try{
 			if(fullList.contains(build)){
-				index = Math.min(index,list.size());
+				index = findProperIndex(index, build);
 				int dex = list.indexOf(build);
 				if(dex >= 0){
 					if(dex == index || dex == index-1){
@@ -140,21 +171,15 @@ public class BuildListModel extends HybridListModel<Build>{
 		antiRecurse = true;
 		try{
 			if(fullList.remove(build)){
-				try{
-					int index = list.indexOf(build);
-					if(index >= 0){
-						list.remove(index);
-						sweepUpdateOrder(index,Integer.MAX_VALUE);
-						fireIntervalRemoved(this, index, index);
-						if(selectedIndex == index){
-							moveSelection(-1);
-						}
-						fireStateChanged();
+				int index = list.indexOf(build);
+				if(index >= 0){
+					list.remove(index);
+					sweepUpdateOrder(index,Integer.MAX_VALUE);
+					fireIntervalRemoved(this, index, index);
+					if(selectedIndex == index){
+						moveSelection(-1);
 					}
-				}finally{
-					synchronized(fullList){
-						fullList.notifyAll();
-					}
+					fireStateChanged();
 				}
 			}
 		}finally{
@@ -166,18 +191,12 @@ public class BuildListModel extends HybridListModel<Build>{
 		try{
 			Build b = getSelectedElement();
 			if(fullList.remove(b)){
-				try{
-					int location = list.indexOf(b);
-					if(location >= 0){
-						list.remove(location);
-						fireIntervalRemoved(this, location, location);
-						moveSelection(-1);
-						fireStateChanged();
-					}
-				}finally{
-					synchronized(fullList){
-						fullList.notifyAll();
-					}
+				int location = list.indexOf(b);
+				if(location >= 0){
+					list.remove(location);
+					fireIntervalRemoved(this, location, location);
+					moveSelection(-1);
+					fireStateChanged();
 				}
 			}
 		}finally{

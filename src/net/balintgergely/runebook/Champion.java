@@ -21,10 +21,10 @@ public class Champion implements Icon,Comparable<Champion>{
 	}
 	@Override
 	public void paintIcon(Component c, Graphics g, int x, int y) {
-		g.drawImage(image, x, y, 24, 24, c);
+		g.drawImage(image, x, y, 24, 24, null);
 	}
 	public void paintIcon(Component c, Graphics g, int x, int y, int w, int h){
-		g.drawImage(image, x, y, w, h, c);
+		g.drawImage(image, x, y, w, h, null);
 	}
 	@Override
 	public int getIconWidth() {

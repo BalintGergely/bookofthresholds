@@ -183,7 +183,7 @@ public class LCUManager {
 	private final String address;
 	private final WAMPManager wamp;
 	final LCUPerksManager perkManager;
-	final LCUSummonerManager championsManager;
+	final LCUSummonerManager summonerManager;
 	private volatile CompletableFuture<WebSocket> shortState;
 	private volatile Function<String,HttpRequest.Builder> conref;
 	private volatile boolean manuallyClosed = false;
@@ -202,13 +202,13 @@ public class LCUManager {
 			throw new Error("Connecting to the League Client on "+osName+" is not supported.");
 		}
 		perkManager = new LCUPerksManager();
-		championsManager = new LCUSummonerManager();
+		summonerManager = new LCUSummonerManager();
 		wamp = new WAMPManager(this::wampUpdate, Map.of(
 				"OnJsonApiEvent_lol-perks_v1_pages",perkManager::perksChanged,
 				"OnJsonApiEvent_lol-perks_v1_inventory",perkManager::inventoryChanged,
-				"OnJsonApiEvent_lol-champ-select_v1_session",championsManager::sessionChanged,
-				"OnJsonApiEvent_lol-champions_v1_owned-champions-minimal",championsManager::championsChanged,
-				"OnJsonApiEvent_lol-lobby_v2_lobby",championsManager::lobbyChanged
+				"OnJsonApiEvent_lol-champ-select_v1_session",summonerManager::sessionChanged,
+				"OnJsonApiEvent_lol-champions_v1_owned-champions-minimal",summonerManager::championsChanged,
+				"OnJsonApiEvent_lol-lobby_v2_lobby",summonerManager::lobbyChanged
 		));
 	}
 	private void seekerRun(){
@@ -253,21 +253,20 @@ public class LCUManager {
 		return CompletableFuture.allOf(
 			simpleGet("lol-perks/v1/pages").thenAccept(perkManager::perksChanged),
 			simpleGet("lol-perks/v1/inventory").thenAccept(perkManager::inventoryChanged),
-			simpleGet("lol-champions/v1/owned-champions-minimal").thenAccept(championsManager::championsChanged),
 			client.sendAsync(conref.apply("lol-lobby/v2/lobby").GET().build(),
 			JSONBodySubscriber.HANDLE_UTF8).thenAccept((HttpResponse<Object> response) -> {
 				if(response.statusCode()/100 == 2){
-					championsManager.lobbyChanged(response.body());
+					summonerManager.lobbyChanged(response.body());
 				}else{
-					championsManager.lobbyChanged(null);
+					summonerManager.lobbyChanged(null);
 				}
 			}),
 			client.sendAsync(conref.apply("lol-champ-select/v1/session").GET().build(),
 			JSONBodySubscriber.HANDLE_UTF8).thenAccept((HttpResponse<Object> response) -> {
 				if(response.statusCode()/100 == 2){
-					championsManager.sessionChanged(response.body());
+					summonerManager.sessionChanged(response.body());
 				}else{
-					championsManager.sessionChanged(null);
+					summonerManager.sessionChanged(null);
 				}
 			})
 		);
@@ -297,8 +296,10 @@ public class LCUManager {
 				conref = (String str) -> builder.copy().uri(uri(base+str));
 			}
 			String authString = "Basic "+Base64.getEncoder().encodeToString(("riot:"+password).getBytes());
-			shortState = simpleGet("lol-summoner/v1/current-summoner")
-				.thenAccept(championsManager::updateCurrentSummoner)
+			shortState = simpleGet("lol-champions/v1/owned-champions-minimal")
+				.thenAccept(summonerManager::championsChanged)
+				.thenCompose(o -> simpleGet("lol-summoner/v1/current-summoner"))
+				.thenAccept(summonerManager::updateCurrentSummoner)
 				.thenCompose(o -> wamp.open(client.newWebSocketBuilder().header("Authorization", authString),uri("wss://"+address+":"+port)))
 				.thenCompose(webSocket -> fetchAllData().handle((a,t) -> {
 				if(t != null){
@@ -764,7 +765,7 @@ public class LCUManager {
 						}
 					}
 				}
-				if(pghlChanged){
+				if(pghlChanged && championList != null){
 					fireTableRowsUpdated();
 					fireStateChanged();
 				}
@@ -923,7 +924,7 @@ public class LCUManager {
 		 */
 		@Override
 		public int compare(Champion c1, Champion c2) {
-			int o1 = c1.key,o2 = c2.key;
+			int o1 = indexOfChampion(championList, c1.key),o2 = indexOfChampion(championList, c2.key);
 			int t1 = globalStates[o1] << 8,t2 = globalStates[o2] << 8,m1 = 0,m2 = 0;
 			if((t1 & UNAVAILABLE) != 0){
 				if((t2 & UNAVAILABLE) != 0){

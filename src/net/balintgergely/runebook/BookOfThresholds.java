@@ -115,7 +115,7 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "3.0.1";
+	private static final String VERSION = "3.0.2";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -191,7 +191,7 @@ public class BookOfThresholds extends JFrame{
 			assets = new AssetManager(dragon, localeString);
 			JOptionPane.setDefaultLocale(assets.locale);
 			if(clm != null){
-				clm.championsManager.setChampionList(assets.championsOrdered);
+				clm.summonerManager.setChampionList(assets.championsOrdered);
 			}
 			System.out.println("Securing Cloud to Earth...");
 			if(dragon.finish()){
@@ -581,7 +581,7 @@ public class BookOfThresholds extends JFrame{
 					assistant.setIconImage(assets.windowIcon);
 					assistantButton.setModel(assistant.callerModel);
 					mainViewToolBar.add(assistantButton);
-					LCUSummonerManager summonerManager = client.championsManager;
+					LCUSummonerManager summonerManager = client.summonerManager;
 					final ActionListener btAct = (ActionEvent e) -> championBox.setSelectedItem(((JButton)e.getSource()).getIcon());
 					final JButton[] prefButtonList = new JButton[5];
 					final int[] prefList = new int[5];
@@ -613,14 +613,12 @@ public class BookOfThresholds extends JFrame{
 					if(e.getStateChange() == ItemEvent.SELECTED){
 						buildListModel.sortForChampion(e.getItem());
 						clearSortingButton.setVisible(true);
-						buildList.getDropTarget().setActive(false);
 					}
 				});
 				clearSortingButton.addActionListener((ActionEvent e) -> {
 					championBox.setSelectedIndex(-1);
 					clearSortingButton.setVisible(false);
 					buildListModel.sortByOrder();
-					buildList.getDropTarget().setActive(true);
 				});
 				clearSortingButton.setVisible(false);
 				mainViewToolBar.add(clearSortingButton);

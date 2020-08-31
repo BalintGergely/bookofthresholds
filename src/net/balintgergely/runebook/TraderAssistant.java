@@ -2,6 +2,7 @@ package net.balintgergely.runebook;
 
 import java.awt.Dimension;
 import java.awt.event.WindowEvent;
+import java.util.Comparator;
 import java.util.Enumeration;
 
 import javax.swing.ButtonModel;
@@ -30,7 +31,7 @@ public class TraderAssistant extends JFrame{
 		rendererLabel.setBorder(null);
 		//rendererLabel.setForeground(Color.WHITE);
 		rendererLabel.setHorizontalAlignment(SwingConstants.LEFT);
-		tableModel = client.championsManager;
+		tableModel = client.summonerManager;
 		TableRowSorter<LCUSummonerManager> tableRowSorter = new TableRowSorter<>(tableModel);
 		tableRowSorter.setSortsOnUpdates(true);
 		JTable table = new JTable(tableModel);
@@ -68,7 +69,7 @@ public class TraderAssistant extends JFrame{
 				maximumWidth = width;
 			}
 		}
-		tableRowSorter.setComparator(0, tableModel);
+		tableRowSorter.setComparator(0, Comparator.naturalOrder());
 		TableColumnModel columnModel = table.getColumnModel();
 		columnModel.getColumn(0).setPreferredWidth(maximumWidth);
 		columnModel.getColumn(0).setHeaderValue(assets.z.getString("champion"));
