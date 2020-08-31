@@ -83,7 +83,7 @@ public class BuildIcon implements Icon{
 					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+48, y+24, 24, 24, null);
 				}
 				x += 24;
-				y += 50;
+				y += 51;
 			}else{
 				if(keystone == null){
 					if(rune.primaryPath != null){
@@ -96,7 +96,7 @@ public class BuildIcon implements Icon{
 					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+20, y+16, 24, 24, null);
 				}
 				x += 64;
-				y += 14;
+				y += 15;
 			}
 			Path path = rune.primaryPath;
 			RuneModel model = rune.model;

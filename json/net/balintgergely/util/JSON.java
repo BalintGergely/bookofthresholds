@@ -30,14 +30,16 @@ import java.util.concurrent.atomic.LongAccumulator;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 public final class JSON {
 	public static void main(String[] atgs){
 		System.out.println(Map.entry("JS", "ON").getClass() == immMapEntry);
 		System.out.println("JSON");
 	}
+	public static final Pattern NUMBER_PATTERN = Pattern.compile("-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?");
 	public static final Class<?> immMapEntry;
-	public static final Comparator<Map.Entry<String,Object>> entryComparator = (a,b) -> a.getKey().compareTo(b.getKey());
+	public static final Comparator<Map.Entry<String,Object>> MAP_ENTRY_COMPARATOR = Comparator.comparing(Map.Entry::getKey);
 	static {
 		Class<?> m = null;
 		try{
@@ -96,8 +98,20 @@ public final class JSON {
 		}
 	}
 	public static Object readObject(Reader input) throws IOException{
-		return readObject(input,null);
+		Object obj = readObject(input,null);
+		if(obj == input){
+			throw new IOException();
+		}
+		return obj;
 	}
+	/**
+	 * Reads an object using the carrier to store an over-read character if finds one.
+	 * Special cased to return the input Reader if encounters a ']'.
+	 * @param input
+	 * @param carrier
+	 * @return
+	 * @throws IOException
+	 */
 	private static Object readObject(Reader input,JSON carrier) throws IOException{
 		if(carrier != null){
 			carrier.flag = -2;
@@ -191,7 +205,11 @@ public final class JSON {
 						}
 						v += r;
 					}
-					sb.append((char)Integer.parseUnsignedInt(new String(nexts), 16));
+					try{
+						sb.append((char)Integer.parseUnsignedInt(new String(nexts), 16));
+					}catch(Exception e){
+						throw new IOException(e);
+					}
 					break;
 				default:
 					if(c < 0){
@@ -284,13 +302,40 @@ public final class JSON {
 		}
 		return b.toString();
 	}
+	public static String quote(Number value){
+		if(value == null){
+			return "null";
+		}else if(value instanceof Double
+				|| value instanceof Integer
+				|| value instanceof Long
+				|| value instanceof Float
+				|| value instanceof Short
+				|| value instanceof Byte){
+			return value.toString();
+		}else{
+			String str = value.toString();
+			if(str == null){
+				return "null";
+			}
+			String strp = str.strip();
+			if(strp.equals("null")){
+				return str;
+			}
+			if(NUMBER_PATTERN.matcher(strp).matches()){
+				return str;
+			}
+			throw new IllegalArgumentException();
+		}
+	}
 	public static void write(Object obj,Appendable output) throws IOException{
 		if(obj instanceof JSMap){
 			write(((JSMap)obj).map,output);
 		}else if(obj instanceof JSList){
 			write(((JSList)obj).list,output);
-		}else if(obj instanceof Number || obj instanceof Boolean){
+		}else if(obj instanceof Boolean){
 			output.append(obj.toString());
+		}else if(obj instanceof Number){
+			output.append(quote((Number)obj));
 		}else if(obj == null){
 			output.append("null");
 		}else if(obj instanceof Enum){
@@ -822,7 +867,7 @@ public final class JSON {
 		if(length == 0){
 			return Map.of();
 		}
-		Arrays.sort(target, 0, length, entryComparator);
+		Arrays.sort(target, 0, length, MAP_ENTRY_COMPARATOR);
 		String latest = target[0].getKey();
 		int a = 1,b = 1;
 		while(a < length){
@@ -834,8 +879,7 @@ public final class JSON {
 			}
 			a++;
 		}
-		return new Immutable.ImmutableMap(
-				new Immutable.ImmutableSet(b < target.length ? Arrays.copyOf(target, b) : target));
+		return new Immutable.ImmutableMap(b < target.length ? Arrays.copyOf(target, b) : target);
 	}
 	@SuppressWarnings("unchecked")
 	public static List<Object> freezeList(Iterable<?> itr){

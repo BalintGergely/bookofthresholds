@@ -12,13 +12,28 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.Spliterator;
+import java.util.Spliterators;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
 
 public interface Mirror {
+	public static <E> NavigableSet<E> mirror(NavigableSet<E> set){
+		if(set instanceof DescendingSet){
+			return set.descendingSet();
+		}else{
+			return new DescendingSet<>(set);
+		}
+	}
+	public static <K,V> NavigableMap<K,V> mirror(NavigableMap<K,V> map){
+		if(map instanceof DescendingMap){
+			return map.descendingMap();
+		}else{
+			return new DescendingMap<>(map);
+		}
+	}
 	public static final class DescendingSet<E> extends AbstractSet<E> implements NavigableSet<E>,Mirror{
 		public final NavigableSet<E> mirror;
-		public DescendingSet(NavigableSet<E> set) {
+		private DescendingSet(NavigableSet<E> set) {
 			this.mirror = Objects.requireNonNull(set);
 		}
 		@Override
@@ -128,15 +143,15 @@ public interface Mirror {
 		@Override
 		public NavigableSet<E> subSet(E fromElement, boolean fromInclusive,
 				E toElement, boolean toInclusive) {
-			return new DescendingSet<>(mirror.subSet(toElement, toInclusive, fromElement, fromInclusive)); 
+			return mirror.subSet(toElement, toInclusive, fromElement, fromInclusive).descendingSet(); 
 		}
 		@Override
 		public NavigableSet<E> headSet(E toElement, boolean inclusive) {
-			return new DescendingSet<>(mirror.tailSet(toElement, inclusive)); 
+			return mirror.tailSet(toElement, inclusive).descendingSet(); 
 		}
 		@Override
 		public NavigableSet<E> tailSet(E fromElement, boolean inclusive) {
-			return new DescendingSet<>(mirror.headSet(fromElement, inclusive)); 
+			return mirror.headSet(fromElement, inclusive).descendingSet(); 
 		}
 		@Override
 		public SortedSet<E> subSet(E fromElement,
@@ -158,7 +173,7 @@ public interface Mirror {
 			if(itr instanceof Spliterator){
 				return (Spliterator<E>)itr;
 			}else{
-				return super.spliterator();
+				return Spliterators.spliterator(itr, mirror.size(), Spliterator.DISTINCT);
 			}
 		}
 		@Override
@@ -180,7 +195,7 @@ public interface Mirror {
 	}
 	public static final class DescendingMap<K,V> extends AbstractMap<K,V> implements NavigableMap<K,V>,Mirror{
 		public final NavigableMap<K,V> mirror;
-		public DescendingMap(NavigableMap<K,V> mp){
+		private DescendingMap(NavigableMap<K,V> mp){
 			this.mirror = Objects.requireNonNull(mp);
 		}
 		@Override
@@ -307,15 +322,15 @@ public interface Mirror {
 		@Override
 		public NavigableMap<K, V> subMap(K fromKey, boolean fromInclusive, K toKey,
 				boolean toInclusive) {
-			return new DescendingMap<>(mirror.subMap(toKey, toInclusive, fromKey, fromInclusive));
+			return mirror.subMap(toKey, toInclusive, fromKey, fromInclusive).descendingMap();
 		}
 		@Override
 		public NavigableMap<K, V> headMap(K toKey, boolean inclusive) {
-			return new DescendingMap<>(mirror.tailMap(toKey, inclusive));
+			return mirror.tailMap(toKey, inclusive).descendingMap();
 		}
 		@Override
 		public NavigableMap<K, V> tailMap(K fromKey, boolean inclusive) {
-			return new DescendingMap<>(mirror.headMap(fromKey, inclusive));
+			return mirror.headMap(fromKey, inclusive).descendingMap();
 		}
 		@Override
 		public NavigableMap<K,V> subMap(K fromElement,K toElement) {

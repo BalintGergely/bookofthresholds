@@ -45,7 +45,7 @@ interface Immutable {
 		}
 	}
 	public static class ImmutableSet extends ImmutableList<Map.Entry<String, Object>> implements Set<Map.Entry<String, Object>>{
-		ImmutableSet(Map.Entry<String, Object>[] data){
+		private ImmutableSet(Map.Entry<String, Object>[] data){
 			super(data);
 		}
 		private ImmutableSet(Map.Entry<String, Object>[] data,int offset,int length){
@@ -85,25 +85,25 @@ interface Immutable {
 				return -1;
 			}
 			int min = offset,max = offset+length-1;
-			while(min != max){
-				int half = min+(max-min)/2;
-				switch(compare(k,data[half].getKey())){
-				case -1:max = half-1;break;
-				case 0:return half-offset;
-				case 1:min = half+1;break;
+			while(min < max){
+				int mid = (min+max) >>> 1;
+				switch(compare(k,data[mid].getKey())){
+				case -1:max = mid-1;break;
+				case 0:return mid-offset;
+				case 1:min = mid+1;break;
 				}
 			}
-			return k.compareTo(data[min].getKey()) == 0 ? min-offset : -1;
+			return k.equals(data[min].getKey()) ? min-offset : -1;
 		}
 		public int seekNear(String k,boolean lower,boolean inclusive){
 			if(k != null){
 				int min = offset,max = offset+length-1;
-				while(min != max){
-					int half = min+(max-min)/2;
-					switch(compare(k,data[half].getKey())){
-					case -1:max = half-1;break;
-					case 0:return (inclusive ? half : (lower ? half-1 : half+1))-offset;
-					case 1:min = half+1;break;
+				while(min < max){
+					int mid = (min+max) >>> 1;
+					switch(compare(k,data[mid].getKey())){
+					case -1:max = mid-1;break;
+					case 0:return (inclusive ? mid : (lower ? mid-1 : mid+1))-offset;
+					case 1:min = mid+1;break;
 					}
 				}
 				switch(compare(k,data[min].getKey())){
@@ -141,7 +141,7 @@ interface Immutable {
 			@Override
 			@SuppressWarnings("unchecked")
 			public Comparator<? super E> getComparator() {
-				return (Comparator<? super E>)JSON.entryComparator;
+				return (Comparator<? super E>)JSON.MAP_ENTRY_COMPARATOR;
 			}
 		}
 		private static class RevItr<E> extends ArrayIterator.Descending<E>{
@@ -167,7 +167,7 @@ interface Immutable {
 			@Override
 			@SuppressWarnings("unchecked")
 			public Comparator<? super E> getComparator() {
-				return (Comparator<? super E>)JSON.entryComparator;
+				return (Comparator<? super E>)JSON.MAP_ENTRY_COMPARATOR;
 			}
 		}
 		@Override
@@ -419,7 +419,7 @@ interface Immutable {
 		}
 		@Override
 		public NavigableSet<String> descendingSet() {
-			return new Mirror.DescendingSet<>(this);
+			return Mirror.mirror(this);
 		}
 		@Override
 		public Iterator<String> descendingIterator() {
@@ -719,8 +719,11 @@ interface Immutable {
 			return e == null ? null : e.getKey();
 		}
 		private ImmutableSet entries;
-		ImmutableMap(ImmutableSet ent){
-			entries = ent;
+		ImmutableMap(Map.Entry<String, Object>[] data){
+			entries = new ImmutableSet(data);
+		}
+		private ImmutableMap(ImmutableSet st){
+			entries = st;
 		}
 		@Override
 		public Comparator<? super String> comparator() {
@@ -812,7 +815,7 @@ interface Immutable {
 		}
 		@Override
 		public NavigableMap<String, Object> descendingMap() {
-			return new Mirror.DescendingMap<>(this);
+			return Mirror.mirror(this);
 		}
 		@Override
 		public NavigableSet<String> navigableKeySet() {

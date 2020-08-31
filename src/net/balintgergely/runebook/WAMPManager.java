@@ -16,6 +16,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import net.balintgergely.util.JSList;
+import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
 
 public class WAMPManager implements WebSocket.Listener{
@@ -170,9 +171,13 @@ public class WAMPManager implements WebSocket.Listener{
 			String key = list.peekString(1);
 			if(key != null){
 				Consumer<Object> cns = listenerMap.get(key);
-				Object obj = JSON.toJSMap(list.peek(2)).peek("data");
-				if(cns != null && obj != null){
-					cns.accept(obj);
+				JSMap mp = JSON.toJSMap(list.peek(2));
+				if(cns != null && mp.map.containsKey("data")){
+					try{
+						cns.accept(mp.map.get("data"));//Can be mapped to null.
+					}catch(Exception e){
+						e.printStackTrace();
+					}
 				}
 			}
 		}

@@ -12,12 +12,16 @@ import java.awt.GridBagLayout;
 import java.awt.Image;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.PrintStream;
 import java.io.Writer;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -25,6 +29,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,6 +44,7 @@ import javax.swing.DropMode;
 import javax.swing.ImageIcon;
 import javax.swing.InputMap;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -48,6 +54,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
@@ -59,7 +66,9 @@ import javax.swing.border.CompoundBorder;
 import javax.swing.border.LineBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
+import javax.swing.event.TableModelEvent;
 
+import net.balintgergely.runebook.LCUManager.LCUSummonerManager;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
@@ -83,7 +92,7 @@ public class BookOfThresholds extends JFrame{
 				bNextIndex = b.length();
 			}
 			int av = Integer.parseInt(a.substring(aIndex,aNextIndex)),
-				bv = Integer.parseInt(b.substring(bIndex, bNextIndex));
+				bv = Integer.parseInt(b.substring(bIndex,bNextIndex));
 			if(av < bv){
 				return -1;
 			}
@@ -106,14 +115,14 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "2.0.0";
+	private static final String VERSION = "3.0.1";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){}//Eat
 		int argIndex = 0;
 		String doFinishUpdate = null;
-		boolean updateOnly = false;
+		boolean updateOnly = false,hasSetOutput = false;
 		argReadLoop: while(argIndex < atgs.length){
 			String argument = atgs[argIndex++];
 			switch(argument){
@@ -129,6 +138,25 @@ public class BookOfThresholds extends JFrame{
 					continue argReadLoop;
 				}
 				break;
+			case "-logFile":
+				if(!hasSetOutput){
+					File outFile,errFile;
+					for(int logIndex = 0;
+						(outFile = new File("out"+logIndex+".log")).exists() ||
+						(errFile = new File("err"+logIndex+".log")).exists();
+						logIndex++){}
+					PrintStream outStream = new PrintStream(new FileOutputStream(outFile), true, StandardCharsets.UTF_8);
+					PrintStream errStream = new PrintStream(new FileOutputStream(errFile), true, StandardCharsets.UTF_8);
+					System.setOut(outStream);
+					System.setErr(errStream);
+					Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+						try(outStream){
+							errStream.close();
+						}
+					},"File log closer hook"));
+					hasSetOutput = true;
+					continue argReadLoop;
+				}
 			}
 			System.out.println("Ignored: "+argument);
 		}
@@ -147,6 +175,9 @@ public class BookOfThresholds extends JFrame{
 				return;//In an extreme case where some download logic got messed up, we can bypass it.
 			}
 			System.out.println("Confronting Data Dragon...");
+			//In the future we may allow custom specifying the league version, or automatically fetching the latest from data dragon.
+			//Just keep in mind that we do not support versions lower than "9.10.1".
+			//It is not reasonable to fall back to that version, but it still has for example, Kleptomancy.
 			dragon = new DataDragon(new File("dataDragon.zip"), client, "10.16.1");
 			System.out.println("Fetching Runeterran dictionary...");
 			String localeString;
@@ -159,6 +190,9 @@ public class BookOfThresholds extends JFrame{
 			}
 			assets = new AssetManager(dragon, localeString);
 			JOptionPane.setDefaultLocale(assets.locale);
+			if(clm != null){
+				clm.championsManager.setChampionList(assets.championsOrdered);
+			}
 			System.out.println("Securing Cloud to Earth...");
 			if(dragon.finish()){
 				System.out.println("File updated.");
@@ -413,6 +447,7 @@ public class BookOfThresholds extends JFrame{
 			JLabel rendererLabel = new JLabel(rendererBuildIcon);
 			rendererLabel.setDoubleBuffered(false);
 			rendererLabel.setBorder(basicBuildBorder);
+			rendererLabel.setHorizontalAlignment(SwingConstants.LEFT);
 			if(client == null){
 				exportButton = toolButton(3,4,"EXPORT",assets.z.getString("exportCant"),false);
 			}else{
@@ -457,6 +492,9 @@ public class BookOfThresholds extends JFrame{
 							boolean isSelected, boolean cellHasFocus) -> {
 								rendererBuildIcon.setBuild(v);
 								rendererBuildIcon.setGridVariant(false);
+								rendererLabel.setText(null);
+								rendererLabel.setIcon(rendererBuildIcon);
+								rendererLabel.setOpaque(false);
 								rendererLabel.setBorder(isSelected ? selectedBuildBorder : basicBuildBorder);
 								return 	rendererLabel;
 							});
@@ -476,7 +514,7 @@ public class BookOfThresholds extends JFrame{
 			con.gridy = 0;con.weighty = 0;con.gridwidth = 1;con.gridheight = 1;
 			{
 				JToolBar toolBar = new JToolBar();
-				toolBar.setBorder(new LineBorder(Color.LIGHT_GRAY));
+				//toolBar.setBorder(new LineBorder(Color.LIGHT_GRAY));
 				toolBar.setFloatable(false);
 				toolBar.add(exportButton);
 				exportButton.setVisible(false);
@@ -511,28 +549,97 @@ public class BookOfThresholds extends JFrame{
 				aboutButton.addActionListener(this::actionPerformed);
 				mainPanel.add(aboutButton,con);
 			}
-			con.gridx++;con.gridy = 0;con.weightx = 1;/*con.gridheight = 1;
+			con.gridx++;con.gridy = 0;con.weightx = 1;con.gridheight = 1;
+			JList<Build> buildList = new JList<>(buildListModel);
 			{
-				JToolBar toolBar = new JToolBar();
-				toolBar.setFloatable(false);
-				mainPanel.add(toolBar, con, 0);
+				JToolBar mainViewToolBar = new JToolBar();
+				mainViewToolBar.setFloatable(false);
+				mainPanel.add(mainViewToolBar, con, 0);
+				Collection<Champion> championList = assetManager.champions.values();
+				JComboBox<Champion> championBox = new JComboBox<>(championList.toArray(new Champion[championList.size()+1]));
+				//championBox.setOpaque(false);
+				championBox.setSelectedItem(null);
+				rendererLabel.setOpaque(true);
+				championBox.setRenderer((
+				        JList<? extends Champion> ls,
+				        Champion value,
+				        int index,
+				        boolean isSelected,
+				        boolean cellHasFocus) -> {
+				        	rendererLabel.setIcon(value);
+				        	rendererLabel.setText(cellHasFocus || value == null ? "" : value.getName());
+							rendererLabel.setOpaque(true);
+				        	rendererLabel.setBackground(isSelected ? Color.WHITE : Color.LIGHT_GRAY);
+				        	rendererLabel.setBorder(null);
+				        	return rendererLabel;
+				        });
+				championBox.setMaximumSize(championBox.getPreferredSize());
+				if(client != null){
+					JToggleButton assistantButton = new JToggleButton(assets.z.getString("tradeAssistWindow"));
+					TraderAssistant assistant = new TraderAssistant(assets, client);
+					assistant.setTitle(assets.z.getString("tradeAssistWindow"));
+					assistant.setIconImage(assets.windowIcon);
+					assistantButton.setModel(assistant.callerModel);
+					mainViewToolBar.add(assistantButton);
+					LCUSummonerManager summonerManager = client.championsManager;
+					final ActionListener btAct = (ActionEvent e) -> championBox.setSelectedItem(((JButton)e.getSource()).getIcon());
+					final JButton[] prefButtonList = new JButton[5];
+					final int[] prefList = new int[5];
+					for(int i = 0;i < 5;i++){
+						JButton bt = new JButton();
+						mainViewToolBar.add(bt);
+						bt.setVisible(false);
+						bt.addActionListener(btAct);
+						prefButtonList[i] = bt;
+					}
+					summonerManager.addTableModelListener((TableModelEvent e) -> {
+						int size = summonerManager.getNPreferredChampions(prefList);
+						int index = 0;
+						while(index < size){
+							JButton button = prefButtonList[index];
+							button.setIcon(assets.championsOrdered.get(prefList[index]));
+							button.setVisible(true);
+							index++;
+						}
+						while(index < 5){
+							prefButtonList[index].setVisible(false);
+							index++;
+						}
+					});
+				}
+				mainViewToolBar.add(championBox);
+				JButton clearSortingButton = new JButton("Revert order");
+				championBox.addItemListener((ItemEvent e) -> {
+					if(e.getStateChange() == ItemEvent.SELECTED){
+						buildListModel.sortForChampion(e.getItem());
+						clearSortingButton.setVisible(true);
+						buildList.getDropTarget().setActive(false);
+					}
+				});
+				clearSortingButton.addActionListener((ActionEvent e) -> {
+					championBox.setSelectedIndex(-1);
+					clearSortingButton.setVisible(false);
+					buildListModel.sortByOrder();
+					buildList.getDropTarget().setActive(true);
+				});
+				clearSortingButton.setVisible(false);
+				mainViewToolBar.add(clearSortingButton);
 			}
-			con.gridy++;*/con.gridheight = 0;
+			con.gridy++;con.gridheight = 0;
 			{
-				JList<Build> list = new JList<>(buildListModel);
-				list.setTransferHandler(transferer);
-				list.setDragEnabled(true);
-				list.setDropMode(DropMode.INSERT);
-				list.setOpaque(false);
-				list.setSelectionModel(buildListModel);
-				list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
-				list.setVisibleRowCount(0);
+				buildList.setTransferHandler(transferer);
+				buildList.setDragEnabled(true);
+				buildList.setDropMode(DropMode.INSERT);
+				buildList.setOpaque(false);
+				buildList.setSelectionModel(buildListModel);
+				buildList.setLayoutOrientation(JList.HORIZONTAL_WRAP);
+				buildList.setVisibleRowCount(0);
 				JLabel newBuildLabel = new JLabel(assetManager.imageIconForImage(0, 4));
 				newBuildLabel.setHorizontalTextPosition(SwingConstants.CENTER);
 				newBuildLabel.setVerticalTextPosition(SwingConstants.TOP);
 				newBuildLabel.setForeground(Color.WHITE);
 				String nblt = assetManager.z.getString("newRune");
-				list.setCellRenderer((JList<? extends Build> l, Build v, int index,
+				buildList.setCellRenderer((JList<? extends Build> l, Build v, int index,
 						boolean isSelected, boolean cellHasFocus) -> {
 							if(v == null){
 								newBuildLabel.setText(isSelected ? nblt : "");
@@ -541,17 +648,20 @@ public class BookOfThresholds extends JFrame{
 							}
 							rendererBuildIcon.setBuild(v);
 							rendererBuildIcon.setGridVariant(true);
+							rendererLabel.setText(null);
+							rendererLabel.setIcon(rendererBuildIcon);
+							rendererLabel.setOpaque(false);
 							rendererLabel.setBorder(isSelected ? selectedBuildBorder : basicBuildBorder);
 							return 	rendererLabel;
 						});
-				InputMap inputMap = list.getInputMap();
+				InputMap inputMap = buildList.getInputMap();
 				for(KeyStroke ks : inputMap.allKeys()){
 					Object action = inputMap.get(ks);
 					if(buildPanelActionMap.get(action) != null){
 						buildPanelInputMap.put(ks, action);
 					}
 				}
-				JScrollPane sp = new JScrollPane(list,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+				JScrollPane sp = new JScrollPane(buildList,JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 				sp.setBorder(null);
 				sp.setOpaque(false);
 				sp.getViewport().setOpaque(false);

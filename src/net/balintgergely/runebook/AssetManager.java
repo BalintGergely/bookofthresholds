@@ -1,5 +1,6 @@
 package net.balintgergely.runebook;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -30,6 +31,7 @@ import net.balintgergely.util.JSON;
 import net.balintgergely.runebook.RuneModel.*;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
+import net.balintgergely.util.ArrayListView;
 
 class AssetManager {
 	public static final byte	TOP = 0x1,
@@ -45,6 +47,7 @@ class AssetManager {
 	 */
 	final RuneModel englishRuneModel;
 	final NavigableMap<String,Champion> champions;
+	final List<Champion> championsOrdered;
 	final NavigableMap<String,Champion> mobafireChampionMap;
 	final Map<RuneModel.Stone,Image> runeIcons;
 	final Map<RuneModel.Stone,Color> runeColors;
@@ -153,25 +156,30 @@ class AssetManager {
 			entry.setValue(entry.getValue().getScaledInstance(scale, scale, Image.SCALE_SMOOTH));
 		}
 		TreeMap<String,Champion> champ = new TreeMap<>();
+		Champion[] keyChamp = new Champion[championData.map.size()];
 		TreeMap<String,Champion> engChamp = new TreeMap<>();
+		int index = 0;
 		for(Entry<String,Object> entry : championData.map.entrySet()){
 			String key = entry.getKey();
 			JSMap champion = JSON.asJSMap(entry.getValue(),true);
 			JSMap image = champion.getJSMap("image");
-			Champion ch = new Champion(key,champion.getString("name"),
+			Champion ch = new Champion(key,champion.getString("name"),champion.getInt("key"),
 					(BufferedImage)dragon.fetchObject(n.getString("champion")+"/img/sprite/"+image.getString("sprite")),
 					image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h"));
 			engChamp.put(englishChampionData.getJSMap(key).getString("name").toUpperCase(Locale.ROOT),ch);
 			champ.put(key,ch);
+			keyChamp[index++] = ch;
 		}
+		Arrays.sort(keyChamp,(a,b) -> Integer.compare(a.key,b.key));
 		champions = Collections.unmodifiableNavigableMap(champ);
+		championsOrdered = new ArrayListView<>(keyChamp);
 		mobafireChampionMap = Collections.unmodifiableNavigableMap(engChamp);
-		{//Rune Book? Book with power? Why not? Also the reason we need championFull.json which is kinda big. In the future we can improve on this.
+		{//Rune Book? Book with power? Why not?
 			BufferedImage windIc = (BufferedImage)dragon.fetchObject(iconPath);//Here, Ryze's passive icon is another big candidate.
 			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
 			windowIcon = windIc.getSubimage(0, hy, hx, hy);
 		}
-		iconSprites = loadImageWithHash("icons.png",1957051651l);//Absolutely NO tampering please!
+		iconSprites = loadImageWithHash("icons.png",2467156344l);//Absolutely NO tampering please!
 		background = loadImageWithHash("background.png",1433901601l);
 	}
 	BufferedImage loadImageWithHash(String name,long checksum) throws IOException{

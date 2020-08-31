@@ -29,6 +29,7 @@ public class BuildListModel extends HybridListModel<Build>{
 	public final List<Build> publicList;
 	private CopyOnWriteArrayList<Build> fullList;
 	private List<Build> list;
+	private boolean isByOrder = true;
 	public BuildListModel(Collection<Build> initials) {
 		fullList = new CopyOnWriteArrayList<>(initials);
 		fullList.sort(BY_ORDER);
@@ -48,14 +49,40 @@ public class BuildListModel extends HybridListModel<Build>{
 		return index == list.size() ? null : list.get(index);
 	}
 	private void sweepUpdateOrder(int fromIndex,int toIndex){
-		toIndex = Math.min(toIndex, list.size()-1);
-		while(fromIndex <= toIndex){
-			list.get(fromIndex).setOrder(fromIndex);
-			fromIndex++;
+		if(isByOrder){
+			toIndex = Math.min(toIndex, list.size()-1);
+			while(fromIndex <= toIndex){
+				list.get(fromIndex).setOrder(fromIndex);
+				fromIndex++;
+			}
 		}
 	}
 	public int getPreferredInsertLocation(){
 		return (selectedIndex == list.size()) ? selectedIndex : 0;
+	}
+	public void sortByOrder(){
+		if(!isByOrder){
+			isByOrder = true;
+			list.sort(BY_ORDER);
+			fireContentsChanged(this, 0, list.size()-1);
+		}
+	}
+	public void sortForChampion(Object ch){
+		isByOrder = false;
+		list.sort((a,b) -> {
+			if(a.getChampion() == ch){
+				if(b.getChampion() == ch){
+					return 0;
+				}else{
+					return -1;
+				}
+			}else if(b.getChampion() == ch){
+				return 1;
+			}else{
+				return 0;
+			}
+		});
+		fireContentsChanged(this, 0, list.size()-1);
 	}
 	public void insertBuild(Build build,int index){
 		antiRecurse = true;

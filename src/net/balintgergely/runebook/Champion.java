@@ -6,13 +6,15 @@ import java.awt.image.BufferedImage;
 
 import javax.swing.Icon;
 
-public class Champion implements Icon{
+public class Champion implements Icon,Comparable<Champion>{
 	public final String id;
+	public final int key;
 	private BufferedImage image;
 	private String name;
 	//private JSMap data;
-	public Champion(String id,String name,BufferedImage sprite,int x,int y,int w,int h){
+	public Champion(String id,String name,int key,BufferedImage sprite,int x,int y,int w,int h){
 		this.id = id;
+		this.key = key;
 		this.image = sprite.getSubimage(x, y, w, h);
 		this.name = name;
 		//this.data = data;
@@ -38,5 +40,9 @@ public class Champion implements Icon{
 	@Override
 	public String toString(){
 		return id;
+	}
+	@Override
+	public int compareTo(Champion o) {
+		return id.compareTo(o.id);
 	}
 }
