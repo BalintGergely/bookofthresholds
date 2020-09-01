@@ -8,18 +8,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.Vector;
 import java.util.zip.CRC32;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
 import java.util.ResourceBundle.Control;
 import java.util.function.Function;
 
 import javax.imageio.ImageIO;
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 
-import java.util.NavigableMap;
 import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Graphics;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
@@ -28,27 +31,34 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import net.balintgergely.util.JSON;
+import net.balintgergely.runebook.Champion.Variant;
 import net.balintgergely.runebook.RuneModel.*;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.ArrayListView;
 
-class AssetManager {
+class AssetManager{
 	public static final byte	TOP = 0x1,
 								MIDDLE = 0x2,
 								BOTTOM = 0x4,
 								JUNGLE = 0x8,
 								SUPPORT = 0x10;
 	public static final int PATH_SIZE = 32,KEYSTONE_SIZE = 48,RUNESTONE_SIZE = 32,STAT_MOD_SIZE = 24;
-	public static final String LAST_KNOWN_GAME_VERSION = "10.16.1";
+	private final String kaynId;
+	private static void an(Object o){
+		if(o != null){
+			throw new IllegalStateException();
+		}
+	}
 	final RuneModel runeModel;
 	/**
 	 * Used when directly pasting from Mobafire.
 	 */
 	final RuneModel englishRuneModel;
-	final NavigableMap<String,Champion> champions;
-	final List<Champion> championsOrdered;
-	final NavigableMap<String,Champion> mobafireChampionMap;
+	final NavigableMap<String,Champion> championsById;
+	final Map<Champion,List<Variant>> championVariants;
+	final List<Champion> championsByKey;
+	final Map<String,Champion> championsByEnglishName;
 	final Map<RuneModel.Stone,Image> runeIcons;
 	final Map<RuneModel.Stone,Color> runeColors;
 	BufferedImage windowIcon;
@@ -155,25 +165,41 @@ class AssetManager {
 			}
 			entry.setValue(entry.getValue().getScaledInstance(scale, scale, Image.SCALE_SMOOTH));
 		}
-		TreeMap<String,Champion> champ = new TreeMap<>();
-		Champion[] keyChamp = new Champion[championData.map.size()];
-		TreeMap<String,Champion> engChamp = new TreeMap<>();
+		TreeMap<String,Champion> champById = new TreeMap<>();
+		Champion[] champByKey = new Champion[championData.map.size()];
+		HashMap<String,Champion> champByEng = new HashMap<>();
 		int index = 0;
+		Champion kayn = null;
+		Variant ass = null,slay = null;
 		for(Entry<String,Object> entry : championData.map.entrySet()){
 			String key = entry.getKey();
 			JSMap champion = JSON.asJSMap(entry.getValue(),true);
 			JSMap image = champion.getJSMap("image");
-			Champion ch = new Champion(key,champion.getString("name"),champion.getInt("key"),
-					(BufferedImage)dragon.fetchObject(n.getString("champion")+"/img/sprite/"+image.getString("sprite")),
-					image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h"));
-			engChamp.put(englishChampionData.getJSMap(key).getString("name").toUpperCase(Locale.ROOT),ch);
-			champ.put(key,ch);
-			keyChamp[index++] = ch;
+			Champion ch = new Champion(
+					key,
+					champion.getString("name"),
+					champion.getInt("key"),
+					((BufferedImage)dragon.fetchObject(n.getString("champion")+"/img/sprite/"+image.getString("sprite")))
+					.getSubimage(image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h")));
+			an(champByEng.put(englishChampionData.getJSMap(key).getString("name").toUpperCase(Locale.ROOT),ch));
+			if(key.equals("Kayn")){
+				kayn = ch;//Guaranteed to happen no more than once.
+				ass = new Variant(ch,"ass",loadImageWithHash("kayn_ass_square.png",2624372905l));
+				slay = new Variant(ch,"slay",loadImageWithHash("kayn_slay_square.png",4243224101l));
+				an(champById.put(key+"ass",ass));
+				an(champById.put(key+"slay",slay));
+			}else{
+				an(champById.put(key,ch));
+			}
+			champByKey[index++] = ch;
 		}
-		Arrays.sort(keyChamp,(a,b) -> Integer.compare(a.key,b.key));
-		champions = Collections.unmodifiableNavigableMap(champ);
-		championsOrdered = new ArrayListView<>(keyChamp);
-		mobafireChampionMap = Collections.unmodifiableNavigableMap(engChamp);
+		Arrays.sort(champByKey,(a,b) -> Integer.compare(a.key,b.key));
+		//This will error if Kayn is not present in the champion database.
+		champById.put(kaynId = kayn.toString(),kayn);
+		championVariants = Map.of(kayn,List.of(ass,slay));
+		championsById = Collections.unmodifiableNavigableMap(champById);
+		championsByKey = new ArrayListView<>(champByKey);
+		championsByEnglishName = Collections.unmodifiableMap(champByEng);
 		{//Rune Book? Book with power? Why not?
 			BufferedImage windIc = (BufferedImage)dragon.fetchObject(iconPath);//Here, Ryze's passive icon is another big candidate.
 			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
@@ -181,6 +207,27 @@ class AssetManager {
 		}
 		iconSprites = loadImageWithHash("icons.png",2467156344l);//Absolutely NO tampering please!
 		background = loadImageWithHash("background.png",1433901601l);
+	}
+	public boolean hasSubChampions(Champion ch){
+		return ch.toString() == kaynId;
+	}
+	public Vector<Champion> getEffectiveChampionList(){
+		Vector<Champion> list = new Vector<>(championsById.size()-1);
+		for(Champion ch : championsById.values()){
+			if(ch.toString() != kaynId){
+				list.add(ch);
+			}
+		}
+		return list;
+	}
+	public Vector<Champion> getSelectableChampionList(){
+		Vector<Champion> list = new Vector<>(championsById.size()-2);
+		for(Champion ch : championsById.values()){
+			if(!(ch instanceof Variant)){
+				list.add(ch);
+			}
+		}
+		return list;
 	}
 	BufferedImage loadImageWithHash(String name,long checksum) throws IOException{
 		CRC32 sum = new CRC32();
@@ -195,9 +242,6 @@ class AssetManager {
 			throw new IOException("Could not read asset file: "+name+" The file may be corrupted. (File length: "+data.length+")");
 		}
 		return ImageIO.read(new ByteArrayInputStream(data));
-	}
-	Champion[] getChampions(){
-		return champions.values().toArray(Champion[]::new);
 	}
 	public ImageIcon imageIconForImage(int imgx,int imgy){
 		return new ImageIcon(iconSprites.getSubimage(imgx*24, imgy*24, 24, 24));
@@ -228,6 +272,24 @@ class AssetManager {
 			int green = greenSum <= 0 ? 0 : (greenSum >= 255 ? 255 : (int)Math.round(greenSum));
 			int blue = blueSum <= 0 ? 0 : (blueSum >= 255 ? 255 : (int)Math.round(blueSum));
 			return new Color((red << 16) | (green << 8) | blue);
+		}
+	}
+	public class RoleIcon implements Icon{
+		public final byte roles;
+		public RoleIcon(byte roles){
+			this.roles = roles;
+		}
+		@Override
+		public void paintIcon(Component c, Graphics g, int x, int y) {
+			paintRoleIcon(g, roles, x, y);
+		}
+		@Override
+		public int getIconWidth() {
+			return 24;
+		}
+		@Override
+		public int getIconHeight() {
+			return 24;
 		}
 	}
 	public void paintRoleIcon(Graphics gr,byte roles,int x,int y){

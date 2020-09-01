@@ -29,7 +29,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -115,7 +114,7 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "3.0.2";
+	private static final String VERSION = "3.0.3";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -191,7 +190,7 @@ public class BookOfThresholds extends JFrame{
 			assets = new AssetManager(dragon, localeString);
 			JOptionPane.setDefaultLocale(assets.locale);
 			if(clm != null){
-				clm.summonerManager.setChampionList(assets.championsOrdered);
+				clm.summonerManager.setChampionList(assets.championsByKey);
 			}
 			System.out.println("Securing Cloud to Earth...");
 			if(dragon.finish()){
@@ -286,7 +285,7 @@ public class BookOfThresholds extends JFrame{
 							JSMap bld = JSON.asJSMap(obj, true);
 							String name = bld.peekString("name");
 							String champ = bld.peekString("champion");
-							Champion champion = champ == null ? null : assets.champions.get(champ);
+							Champion champion = champ == null ? null : assets.championsById.get(champ);
 							byte roles = bld.peekByte("roles");
 							buildList.add(new Build(name, champion, assets.runeModel.parseRune(bld), roles,
 									bld.peekLong("order")));
@@ -357,7 +356,7 @@ public class BookOfThresholds extends JFrame{
 							"order",build.getOrder());
 					Champion ch = build.getChampion();
 					if(ch != null){
-						mp.put("champion",ch.id);
+						mp.put("champion",ch.toString());
 					}
 					buildList.add(mp);
 				}
@@ -555,8 +554,7 @@ public class BookOfThresholds extends JFrame{
 				JToolBar mainViewToolBar = new JToolBar();
 				mainViewToolBar.setFloatable(false);
 				mainPanel.add(mainViewToolBar, con, 0);
-				Collection<Champion> championList = assetManager.champions.values();
-				JComboBox<Champion> championBox = new JComboBox<>(championList.toArray(new Champion[championList.size()+1]));
+				JComboBox<Champion> championBox = new JComboBox<>(assets.getSelectableChampionList());
 				//championBox.setOpaque(false);
 				championBox.setSelectedItem(null);
 				rendererLabel.setOpaque(true);
@@ -597,7 +595,7 @@ public class BookOfThresholds extends JFrame{
 						int index = 0;
 						while(index < size){
 							JButton button = prefButtonList[index];
-							button.setIcon(assets.championsOrdered.get(prefList[index]));
+							button.setIcon(assets.championsByKey.get(prefList[index]));
 							button.setVisible(true);
 							index++;
 						}

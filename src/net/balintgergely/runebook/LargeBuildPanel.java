@@ -5,11 +5,11 @@ import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
+import java.awt.event.ItemEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.image.FilteredImageSource;
 import java.awt.image.RGBImageFilter;
-import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.function.Function;
@@ -17,6 +17,8 @@ import java.util.function.Function;
 import javax.swing.GroupLayout;
 import javax.swing.GroupLayout.Alignment;
 import javax.swing.GroupLayout.Group;
+import javax.swing.Icon;
+import javax.swing.JToggleButton.ToggleButtonModel;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.LineBorder;
@@ -29,6 +31,7 @@ import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.JToolTip;
 
+import net.balintgergely.runebook.Champion.Variant;
 import net.balintgergely.runebook.RuneButtonGroup.RuneButtonModel;
 import net.balintgergely.runebook.RuneModel.Runestone;
 import net.balintgergely.runebook.RuneModel.Stone;
@@ -74,8 +77,11 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 	private JComboBox<Champion> championBox;
 	private JLabel descriptionLabel;
 	private JTextField codeField;
+	private BareIconButton variantButton;
 	RuneButtonGroup model;
-	private RoleDisplayButton[] roles;
+	private BareIconButton[] roles;
+	private List<Variant> variantList;
+	private int variantIndex;
 	public void setRune(Rune rn){
 		model.setRune(rn);
 	}
@@ -83,10 +89,14 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		return model.getRune();
 	}
 	public Champion getChampion(){
-		return (Champion)championBox.getSelectedItem();
+		return (Champion)variantButton.getIcon();
 	}
 	public void setChampion(Champion ch){
 		championBox.setSelectedItem(ch);
+		if(variantList != null){
+			variantIndex = ch instanceof Variant ? variantList.indexOf(ch) : -1;
+			variantButton.setIcon(ch);
+		}
 	}
 	public byte getSelectedRoles(){
 		byte bits = 0;
@@ -117,8 +127,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		mainGroup.add(buildGroup0);
 		//mainGroup.add(buildGroup1);
 		{
-			Collection<Champion> championList = assetManager.champions.values();
-			championBox = new JComboBox<>(championList.toArray(new Champion[championList.size()+1]));
+			championBox = new JComboBox<>(assetManager.getSelectableChampionList());
 			//championBox.setOpaque(false);
 			championBox.setSelectedItem(null);
 			JLabel rendererLabel = new JLabel();
@@ -134,17 +143,48 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 			        	rendererLabel.setBackground(isSelected ? Color.WHITE : Color.LIGHT_GRAY);
 			        	return rendererLabel;
 			        });
+			championBox.addItemListener((ItemEvent e) -> {
+				if(e.getStateChange() == ItemEvent.DESELECTED){
+					variantButton.setVisible(false);
+					variantButton.setIcon(null);
+					variantIndex = -1;
+				}
+				if(e.getStateChange() == ItemEvent.SELECTED){
+					Object item = e.getItem();
+					variantButton.setIcon((Icon)item);
+					variantList = assetManager.championVariants.get(item);
+					if(variantList != null){
+						variantButton.setVisible(true);
+					}
+				}
+			});
 			championBox.setMaximumSize(championBox.getPreferredSize());
 			buildGroup0.add(championBox);
+			buildGroup0.add(variantButton = new BareIconButton(null),24,24);
+			variantButton.setVisible(false);
+			variantButton.addActionListener((ActionEvent e) -> {
+				if(variantList != null){
+					variantIndex++;
+					if(variantIndex >= variantList.size()){
+						variantIndex = -1;
+						variantButton.setIcon((Champion)championBox.getSelectedItem());
+					}else{
+						variantButton.setIcon(variantList.get(variantIndex));
+					}
+				}
+			});
+			g.setHonorsVisibility(variantButton, false);
 			super.add(championBox);
 		}
 		{
-			roles = new RoleDisplayButton[5];
+			roles = new BareIconButton[5];
 			for(int i = 0;i < 5;i++){
-				RoleDisplayButton bt = new RoleDisplayButton(assetManager,(byte)(1 << i));
+				BareIconButton bt = new BareIconButton(assetManager.new RoleIcon((byte)(1 << i)));
+				bt.setMaximumSize(new Dimension(24,24));
+				bt.setModel(new ToggleButtonModel());
 				bt.setToolTipText(assetManager.z.getString(ROLE_NAMES[i]));
 				super.add(bt);
-				buildGroup0.add(roles[i] = bt);
+				buildGroup0.add(roles[i] = bt,24,24);
 			}
 		}
 		buildGroup0.hor.addGap(0, 10, 10);
@@ -394,6 +434,10 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		void add(Component c){
 			ver.addComponent(c);
 			hor.addComponent(c);
+		}
+		void add(Component c,int width,int height){
+			ver.addComponent(c,height,height,height);
+			hor.addComponent(c,width,width,width);
 		}
 	}
 }

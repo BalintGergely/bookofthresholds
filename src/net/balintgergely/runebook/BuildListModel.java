@@ -68,13 +68,13 @@ public class BuildListModel extends HybridListModel<Build>{
 	}
 	public void sortForChampion(Object ch){
 		list.sort(sortingOrder = (a,b) -> {
-			if(a.getChampion() == ch){
-				if(b.getChampion() == ch){
+			if(ch.equals(a.getChampion())){
+				if(ch.equals(b.getChampion())){
 					return 0;
 				}else{
 					return -1;
 				}
-			}else if(b.getChampion() == ch){
+			}else if(ch.equals(b.getChampion())){
 				return 1;
 			}else{
 				return 0;

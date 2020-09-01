@@ -619,6 +619,9 @@ public class LCUManager {
 				int length = champions.size();
 				championList = champions;
 				globalStates = new byte[length];
+				for(Summoner sm : summonerCache.values()){
+					sm.rt = new byte[length];
+				}
 				updateCurrentSummoner();
 				lobbyChanged();
 				championsChanged();

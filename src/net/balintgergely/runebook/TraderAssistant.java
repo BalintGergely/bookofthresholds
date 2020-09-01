@@ -63,7 +63,7 @@ public class TraderAssistant extends JFrame{
 		});
 		table.setDefaultRenderer(Champion.class, rendererForChampions);
 		int maximumWidth = 0;
-		for(Champion champion : assets.championsOrdered){
+		for(Champion champion : assets.championsByKey){
 			int width = rendererForChampions.getTableCellRendererComponent(null, champion, false, false, 0, 0).getPreferredSize().width;
 			if(width > maximumWidth){
 				maximumWidth = width;

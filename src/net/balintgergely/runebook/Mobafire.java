@@ -188,7 +188,7 @@ Pattern.compile("^(?<champion>[a-zA-Z ]*) BUILD GUIDE.*^RUNES:(?<name>[^\\n]*)?$
 				return null;
 			}
 			return new Build(nm == null || nm.isBlank() ? "Mobafire Import" : nm.trim(),
-					chp == null || chp.isBlank() ? null : mgr.mobafireChampionMap.get(chp.toUpperCase(Locale.ROOT)),
+					chp == null || chp.isBlank() ? null : mgr.championsByEnglishName.get(chp.toUpperCase(Locale.ROOT)),
 					rune.translate(mgr.runeModel),
 					(byte)0,
 					System.currentTimeMillis()
