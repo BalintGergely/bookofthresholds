@@ -4,17 +4,14 @@ What can it do?<br>
 -Create and store a bunch of rune builds.<br>
 -Associate rune builds with champions and roles.<br>
 -Import those builds directly into the game client.<br>
--Autocomplete a rune if you are in a hurry.<br>
-
-Planned features:<br>
--Sorting, filtering, and reordering the list of runes.<br>
--Mobafire rune link import and export.<br>
 -Accessing custom and default runes stored in the game client.<br>
--Automatically filter for the selected champion and draft role.<br>
+-Autocomplete a rune if you are in a hurry.<br>
+-Mobafire rune link import and export.<br>
+-Sort the list of runes.<br>
+-Help you with planning out trades with a built-in trader assistant.<br>
 
 <a href="https://balintgergely.github.io/bookofthresholds/RuneBook.jar">Download the latest release</a><br>
 <a href="https://github.com/BalintGergely/bookofthresholds">Github Repository</a>
-
 
 Yes...<br>
 ...I made this because I just could not find an application that helps me keep track of runes in League of Legends. Trust me I googled it.<br>
