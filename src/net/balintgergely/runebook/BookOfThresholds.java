@@ -114,7 +114,7 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "3.0.3";
+	private static final String VERSION = "3.0.4";
 	public static void main(String[] atgs) throws Throwable{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -752,7 +752,7 @@ public class BookOfThresholds extends JFrame{
 				byte roles = buildPanel.getSelectedRoles();
 				Build build = buildListModel.getSelectedElement();
 				if(build != null && 
-						(champion != build.getChampion()//Champion changed.
+						(!champion.equals(build.getChampion())//Champion changed.
 								||(
 										!(Objects.equals(name, build.getName()) && roles == build.getFlags()) &&//Either name or roles changed
 										!build.getRune().equals(currentRune)//Rune changed

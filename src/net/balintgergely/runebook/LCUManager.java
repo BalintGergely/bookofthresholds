@@ -614,6 +614,13 @@ public class LCUManager {
 			}
 			return false;
 		}
+		private Summoner newSummoner(int id){
+			Summoner sm = new Summoner(id);
+			if(championList != null){
+				sm.rt = new byte[globalStates.length];
+			}
+			return sm;
+		}
 		public void setChampionList(List<Champion> champions){
 			if(championList == null){
 				int length = champions.size();
@@ -622,8 +629,6 @@ public class LCUManager {
 				for(Summoner sm : summonerCache.values()){
 					sm.rt = new byte[length];
 				}
-				updateCurrentSummoner();
-				lobbyChanged();
 				championsChanged();
 				sessionChanged();
 			}else{
@@ -667,12 +672,17 @@ public class LCUManager {
 			}
 			for(int i = 0;i < teamSize;i++){
 				Summoner sm = myTeam[i];
-				if(sm != null && sm != mySummoner){
+				a: if(sm != null && sm != mySummoner){
 					int hoverIndex = sm.hoveredChampionIndex;
 					if(hoverIndex >= 0 && (
 							 ((mySummoner.rt[hoverIndex] & KNOWN_OWNED) != 0) ||
 							!(imbl || (globalStates[hoverIndex] & GS_FREE_ROTATION) == 0)
 					)){
+						for(int dex = 0;dex < index;dex++){
+							if(array[dex] == hoverIndex){
+								break a;
+							}
+						}
 						array[index++] = hoverIndex;
 						if(array.length == index){
 							return index;
@@ -693,15 +703,12 @@ public class LCUManager {
 			JSMap jsm = localSummonerData;
 			int id = jsm.peekInt("summonerId");
 			if(id != 0 && (mySummoner == null || mySummoner.summonerId != id)){
-				mySummoner = summonerCache.computeIfAbsent(id, Summoner::new);
+				mySummoner = summonerCache.computeIfAbsent(id, this::newSummoner);
 				if(mySummoner.pghl == 0){
 					mySummoner.pghl = 1;
 				}
 				mySummoner.name = jsm.getString("displayName");
 				mySummoner.isExcludedFromFreeRotation = (jsm.getInt("summonerLevel") <= 10);
-			}
-			if(mySummoner != null && championList != null && mySummoner.rt == null){
-				mySummoner.rt = new byte[globalStates.length];
 			}
 		}
 		private void championsChanged(Object obj){
@@ -757,7 +764,7 @@ public class LCUManager {
 					JSMap summonerData = JSON.toJSMap(lst.get(i));
 					int id = summonerData.peekInt("summonerId");
 					if(id != 0){
-						Summoner sm = summonerCache.computeIfAbsent(id, Summoner::new);
+						Summoner sm = summonerCache.computeIfAbsent(id, this::newSummoner);
 						String name = summonerData.peekString("summonerName");
 						if(name != null){
 							sm.name = name;
@@ -802,11 +809,7 @@ public class LCUManager {
 						JSMap summonerData = team.getJSMap(summonerIndex);
 						int id = summonerData.peekInt("summonerId");
 						if(id != 0){
-							Summoner summoner = summonerCache.get(id);
-							if(summoner == null){
-								summonerCache.put(id,summoner = new Summoner(id));
-								summoner.rt = new byte[globalStates.length];
-							}
+							Summoner summoner = summonerCache.computeIfAbsent(id, this::newSummoner);
 							if(pghl(summoner,summonerIndex)){
 								pghlChanged = true;
 							}
