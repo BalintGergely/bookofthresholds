@@ -66,8 +66,8 @@ public class BuildIcon implements Icon{
 			}
 			mgr.paintRoleIcon(gr, roles, x+48, y);
 		}else{
-			gr.drawImage(mgr.runeBase, x+40, y, x+160, y+12, 0, 00, 120, 12, null);
-			gr.drawImage(mgr.runeBase, x+40, y+12, x+160, y+42, 0, 60, 120, 90, null);
+			gr.drawImage(mgr.runeBase, x+40, y, x+159, y+11, 0, 00, 119, 11, null);
+			gr.drawImage(mgr.runeBase, x+40, y+12, x+159, y+41, 0, 60, 119, 89, null);
 		}
 		if(rune != null){
 			boolean lockFlag = (build.getFlags() & 0x40) != 0;

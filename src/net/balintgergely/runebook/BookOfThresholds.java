@@ -114,7 +114,7 @@ public class BookOfThresholds extends JFrame{
 	private static final long serialVersionUID = 1L;
 	private static final File SAVE_FILE = new File("runeBook.json"),TEMP_SAVE_FILE = new File("runeBook.json.temp");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "4.0.0";
+	private static final String VERSION = "4.0.1";
 	public static void main(String[] atgs) throws Throwable{xxxxx:{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
