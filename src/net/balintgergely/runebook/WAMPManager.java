@@ -96,7 +96,7 @@ public class WAMPManager implements WebSocket.Listener{
 			return stage = stage.thenCompose(ws -> ws.sendClose(1000, ""));
 		}
 	}
-	public synchronized CompletableFuture<WebSocket> softAbort(WebSocket toClose){
+	public CompletableFuture<WebSocket> softAbort(WebSocket toClose){
 		boolean doUpdate;
 		CompletableFuture<WebSocket> finalStage = null;
 		synchronized(this){

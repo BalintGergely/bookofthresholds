@@ -6,12 +6,13 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
 public final class JSList implements Iterable<Object>{
-	public static final JSList EMPTY_LIST = new JSList(List.of());
+	public static final JSList EMPTY_LIST = new JSList(Collections.emptyList());
 	public final List<Object> list;
 	public JSList(){
 		list = new ArrayList<Object>();
@@ -22,26 +23,6 @@ public final class JSList implements Iterable<Object>{
 	public JSList(List<Object> list){
 		this.list = list;
 	}
-	/*private JSList(CharBuffer input){
-		this();
-		skipWhitespace(input);
-		if(input.get(input.position()) == ']'){
-			input.get();
-			return;
-		}
-		while(true){
-			list.add(parseValue(input));
-			skipWhitespace(input);
-			switch(input.get()){
-			case ',':
-				break;
-			case ']':
-				return;
-			default:ex();
-			}
-			skipWhitespace(input);
-		}
-	}*/
 	public int size(){
 		return list.size();
 	}
@@ -67,6 +48,10 @@ public final class JSList implements Iterable<Object>{
 			return list == l || list.equals(l);
 		}
 		return false;
+	}
+	public JSList clear(){
+		list.clear();
+		return this;
 	}
 	public JSList add(Object value){
 		list.add(wrap(value));

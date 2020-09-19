@@ -42,7 +42,7 @@ public class BuildListModel extends HybridListModel<Build>{
 	}
 	@Override
 	public int getSize() {
-		return list.size()+1;
+		return sortingOrder == BY_ORDER ? (list.size()+1) : list.size();
 	}
 	@Override
 	public Build getElementAt(int index) {
@@ -62,11 +62,18 @@ public class BuildListModel extends HybridListModel<Build>{
 	}
 	public void sortByOrder(){
 		if(sortingOrder != BY_ORDER){
+			Build bld = selectedIndex < 0 ? null : list.get(selectedIndex);
 			list.sort(sortingOrder = BY_ORDER);
+			if(bld != null){
+				silentlySetSelection(list.indexOf(bld));
+			}
 			fireContentsChanged(this, 0, list.size()-1);
+			fireIntervalAdded(this, list.size(), list.size());
 		}
 	}
 	public void sortForChampion(Object ch){
+		Build bld = selectedIndex < 0 || selectedIndex >= list.size() ? null : list.get(selectedIndex);
+		Object oldOrder = sortingOrder;
 		list.sort(sortingOrder = (a,b) -> {
 			if(ch.equals(a.getChampion())){
 				if(ch.equals(b.getChampion())){
@@ -81,6 +88,14 @@ public class BuildListModel extends HybridListModel<Build>{
 			}
 		});
 		fireContentsChanged(this, 0, list.size()-1);
+		if(bld != null){
+			silentlySetSelection(list.indexOf(bld));
+		}else{
+			silentlySetSelection(-1);
+		}
+		if(oldOrder == BY_ORDER){
+			fireIntervalRemoved(this, list.size(), list.size());
+		}
 	}
 	private int findProperIndex(int index,Build build){
 		if(sortingOrder == BY_ORDER){

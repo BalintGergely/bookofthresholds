@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAccumulator;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -55,15 +56,59 @@ public final class JSON {
 	/**
 	 * Skips whitespace and returns the first non-whitespace character it encounters.
 	 */
-	private static char skipWhitespace(Reader r) throws IOException{
+	private static char smartSkip(Reader r,JSON carry) throws IOException{
 		int c;
-		do{
+		if(carry != null && (c = carry.flag) != -2){
+			carry.flag = -2;
+			if(c == '/'){
+				skipComment(r);
+			}else{
+				return (char)c;
+			}
+		}
+		while(true){
 			c = r.read();
 			if(c < 0){
 				eofex();
 			}
-		}while(Character.isWhitespace((char)c));
-		return (char)c;
+			if(c == '/'){
+				skipComment(r);
+			}else if(!Character.isWhitespace((char)c)){
+				return (char)c;
+			}
+		}
+	}
+	/**
+	 * Called after encountering the comment character '/' while not inside a string literal.
+	 */
+	private static void skipComment(Reader r) throws IOException{
+		int c = r.read();
+		if(c == '*'){
+			while(true){
+				c = r.read();
+				while(c == '*'){
+					c = r.read();
+					if(c == '/'){
+						return;
+					}
+				}
+				if(c < 0){
+					eofex();
+				}
+			}
+		}else if(c == '/'){
+			while(true){
+				c = r.read();
+				if(c == '\n'){
+					return;
+				}
+				if(c < 0){
+					eofex();
+				}
+			}
+		}else{
+			ioex();
+		}
 	}
 	/**
 	 * Reads as much as the string parameter and throws ioex if the input does not match it.
@@ -113,10 +158,7 @@ public final class JSON {
 	 * @throws IOException
 	 */
 	private static Object readObject(Reader input,JSON carrier) throws IOException{
-		if(carrier != null){
-			carrier.flag = -2;
-		}
-		char c = skipWhitespace(input);
+		char c = smartSkip(input,carrier);
 		switch(c){
 		case ']':
 			return input;
@@ -230,7 +272,7 @@ public final class JSON {
 		}
 	}
 	public static void readMap(Map<String,Object> map,Reader input) throws IOException{
-		if(skipWhitespace(input) != '{'){
+		if(smartSkip(input,null) != '{'){
 			throw new IOException();
 		}
 		readMap(map,input,new JSON());
@@ -238,7 +280,7 @@ public final class JSON {
 	private static void readMap(Map<String,Object> map,Reader input,JSON carrier) throws IOException{
 		main: while(true){
 			String key = null;
-			switch(skipWhitespace(input)){
+			switch(smartSkip(input,carrier)){
 			case '}':
 				break main;
 			case '\"':
@@ -249,7 +291,7 @@ public final class JSON {
 				break;
 			default:ioex();
 			}
-			if(skipWhitespace(input) != ':'){
+			if(smartSkip(input,carrier) != ':'){
 				ioex();
 			}
 			Object value = readObject(input,carrier);
@@ -257,7 +299,7 @@ public final class JSON {
 				throw new IOException();
 			}
 			map.put(key, value);
-			switch(carrier.flag == -2 ? skipWhitespace(input) : carrier.flag){
+			switch(smartSkip(input,carrier)){
 			case ',':
 				break;
 			case '}':
@@ -265,10 +307,9 @@ public final class JSON {
 			default:ioex();
 			}
 		}
-		carrier.flag = -2;
 	}
 	public static void readList(Collection<Object> list,Reader input) throws IOException{
-		if(skipWhitespace(input) != '['){
+		if(smartSkip(input,null) != '['){
 			throw new IOException();
 		}
 		readList(list,input,new JSON());
@@ -277,7 +318,7 @@ public final class JSON {
 		Object value;
 		main: while((value = readObject(input,carrier)) != input){
 			list.add(value);
-			switch(carrier.flag == -2 ? skipWhitespace(input) : carrier.flag){
+			switch(smartSkip(input,carrier)){
 			case ',':
 				break;
 			case ']':
@@ -285,7 +326,6 @@ public final class JSON {
 			default:ioex();
 			}
 		}
-		carrier.flag = -2;
 	}
 	/**
 	 * Produces a quote of the specified object. The return value is compatible with <code>parseValue(String)</code>.
@@ -374,15 +414,27 @@ public final class JSON {
 		if(map == null){
 			b.append("null");
 		}else{
-			b.append('{');
 			boolean f = false;
+			@SuppressWarnings("resource")
+			Commentator cmt = b instanceof Commentator ? (Commentator)b : null;
+			@SuppressWarnings("unchecked")
+			Map<String,Object> castMap = cmt == null ? null : (Map<String,Object>)map;
+			if(cmt == null){
+				b.append('{');
+			}else{
+				cmt.openAndComment('{',cmt.commentator.apply(castMap, null));
+			}
 			for(Entry<?,?> e : map.entrySet()){
 				Object k = e.getKey();
 				if(k instanceof String || ((k = k.toString()) != null)){
 					if(f){
 						b.append(',');
 					}
-					write((String)k,b);
+					String key = (String)k;
+					if(cmt != null){
+						cmt.writeComment(cmt.commentator.apply(castMap, key));
+					}
+					write(key,b);
 					b.append(':');
 					write(e.getValue(),b);
 					f = true;
@@ -1033,12 +1085,42 @@ public final class JSON {
 			}
 		}
 	}
+	/**
+	 * A PrettyWriter formats JSON as it is being written.
+	 * @author balintgergely
+	 */
 	public static class PrettyWriter extends FilterWriter{
-		int tabs;
-		boolean insideString;
-		boolean slash;
+		protected int tabs;
+		protected boolean insideString;
+		protected boolean slash;
 		public PrettyWriter(Writer out) {
 			super(out);
+		}
+		protected void writeTabs() throws IOException{
+			for(int t = 0;t < tabs;t++){
+				out.write('\t');
+			}
+		}
+		/**
+		 * Writes the specified character, then the specified comment then proceeds as normal.
+		 * The specified character can only be either <code>'{'</code> or <code>'['</code>
+		 */
+		public void openAndComment(int c,String comment) throws IOException{
+			if(insideString){
+				throw new IllegalStateException();
+			}
+			if(c != '{' && c != '['){
+				throw new IllegalArgumentException();
+			}
+			out.write(c);
+			tabs++;
+			if(comment == null){
+				out.write("\r\n");
+				writeTabs();
+			}else{
+				out.write('\t');
+				writeComment(comment);
+			}
 		}
 		@Override
 		public void write(int c) throws IOException {
@@ -1061,18 +1143,14 @@ public final class JSON {
 				}else if(c == ',' || c == '{' || c == '[' || c == '}' || c == ']'){
 					if(c == '{' || c == '['){
 						out.write(c);
-						out.write("\r\n");
 						tabs++;
 					}else if(c == '}' || c == ']'){
-						out.write("\r\n");
 						tabs--;
 					}else{
 						out.write(c);
-						out.write("\r\n");
 					}
-					for(int t = 0;t < tabs;t++){
-						out.write('\t');
-					}
+					out.write("\r\n");
+					writeTabs();
 					if(c == '}' || c == ']'){
 						out.write(c);
 					}
@@ -1124,6 +1202,80 @@ public final class JSON {
 		public Writer append(char c) throws IOException {
 			write(c);
 			return this;
+		}
+		public void writeComment(String comment) throws IOException{
+			if(insideString){
+				throw new IllegalStateException();
+			}
+			if(comment != null){
+				int index = comment.indexOf('\n');
+				int lastIndex = comment.length()-1;
+				if(index < 0 || index == lastIndex){//Single line comment.
+					if(!comment.startsWith("//")){
+						if(comment.startsWith("/")){
+							out.write('/');
+						}else{
+							out.write("// ");
+						}
+					}
+					out.write(comment);
+					if(index < 0){
+						if(comment.endsWith("\r")){
+							out.write('\n');
+						}else{
+							out.write("\r\n");
+						}
+					}
+					writeTabs();
+					return;
+				}
+				lastIndex--;
+				index = comment.indexOf("*/");
+				if(index < 0 || index == lastIndex){//Multi-line comment.
+					if(!comment.startsWith("/*")){
+						if(comment.startsWith("*")){
+							out.write('/');
+						}else{
+							out.write("/* ");
+						}
+					}
+					lastIndex = comment.length();
+					int s = 0,i;
+					while((i = comment.indexOf('\n',s)) >= 0){
+						i++;
+						out.write(comment, s, i-s);
+						writeTabs();
+						out.write(" * ");
+						s = i;
+						i = comment.indexOf('\n',s);
+					}
+					out.write(comment, s, lastIndex-s);
+					if(index < 0){
+						if(comment.endsWith("*")){
+							out.write("/\r\n");
+						}else{
+							out.write("*/\r\n");
+						}
+					}else{
+						out.write("\r\n");
+					}
+					writeTabs();
+					return;
+				}
+				throw new IOException();
+			}
+		}
+	}
+	/**
+	 * A Commentator is special cased in the writeMap method to write an additional comment ahead of 
+	 * each key-value pair. Comments are ignored by the parsing algorithms.
+	 * @author balintgergely
+	 */
+	public static class Commentator extends PrettyWriter{
+		protected BiFunction<? super Map<? super String,Object>,? super String,String> commentator;
+		public Commentator(Writer out,BiFunction<? super Map<? super String,Object>,? super String,String> cmt) {
+			super(out);
+			this.commentator = cmt;
 		}
 	}
 	public static boolean isImmutable(Map<?,?> obj){

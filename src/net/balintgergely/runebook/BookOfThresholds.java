@@ -22,7 +22,6 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.PrintStream;
-import java.io.Writer;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -36,6 +35,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiFunction;
 
 import javax.swing.Action;
 import javax.swing.ActionMap;
@@ -67,14 +67,14 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.TableModelEvent;
 
-import net.balintgergely.runebook.LCUManager.LCUSummonerManager;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
+import net.balintgergely.util.JSON.Commentator;
 import net.balintgergely.util.JSONBodySubscriber;
 
 public class BookOfThresholds extends JFrame{
-	private static final int compareVersion(String a,String b){
+	static final int compareVersion(String a,String b){
 		if(a.equals(b)){
 			return 0;
 		}
@@ -112,10 +112,10 @@ public class BookOfThresholds extends JFrame{
 		}
 	}
 	private static final long serialVersionUID = 1L;
-	private static final File SAVE_FILE = new File("runeBook.json");
+	private static final File SAVE_FILE = new File("runeBook.json"),TEMP_SAVE_FILE = new File("runeBook.json.temp");
 	private static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	private static final String VERSION = "3.0.4";
-	public static void main(String[] atgs) throws Throwable{
+	private static final String VERSION = "4.0.0";
+	public static void main(String[] atgs) throws Throwable{xxxxx:{
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		}catch(Throwable t){}//Eat
@@ -159,6 +159,25 @@ public class BookOfThresholds extends JFrame{
 			}
 			System.out.println("Ignored: "+argument);
 		}
+		if(TEMP_SAVE_FILE.createNewFile()){
+			TEMP_SAVE_FILE.deleteOnExit();
+		}else if(doFinishUpdate == null){
+			TEMP_SAVE_FILE.delete();
+			updateOnly = true;
+		}
+		final JSMap dataMap;
+		if(SAVE_FILE.exists()){
+			JSMap d;
+			try(FileReader reader = new FileReader(SAVE_FILE,StandardCharsets.UTF_8)){
+				d = JSON.toJSMap(JSON.readObject(reader));
+			}catch(Throwable t){
+				d = new JSMap();
+				t.printStackTrace();
+			}
+			dataMap = d;
+		}else{
+			dataMap = new JSMap();
+		}
 		HttpClient client;
 		DataDragon dragon;
 		AssetManager assets = null;
@@ -171,26 +190,28 @@ public class BookOfThresholds extends JFrame{
 					client.sendAsync(HttpRequest.newBuilder(new URI(GITHUB+"/version.json")).GET().build(),
 							JSONBodySubscriber.HANDLE_UTF8);
 			if(updateOnly){
-				return;//In an extreme case where some download logic got messed up, we can bypass it.
+				break xxxxx;//In an extreme case where some download logic got messed up, we can bypass it.
 			}
 			System.out.println("Confronting Data Dragon...");
 			//In the future we may allow custom specifying the league version, or automatically fetching the latest from data dragon.
 			//Just keep in mind that we do not support versions lower than "9.10.1".
 			//It is not reasonable to fall back to that version, but it still has for example, Kleptomancy.
-			dragon = new DataDragon(new File("dataDragon.zip"), client, "10.16.1");
+			dragon = new DataDragon(new File("dataDragon.zip"), client, "10.19.1");
 			System.out.println("Fetching Runeterran dictionary...");
-			String localeString;
+			String localeString = dataMap.peekString("language");
+			boolean isCustomLocale = localeString != null;
 			try{
 				clm = new LCUManager(client);
-				localeString = clm.fetchLocale();
+				if(localeString == null){
+					localeString = clm.fetchLocale();
+				}
 			}catch(Throwable th){
 				clm = null;
-				localeString = null;
 			}
-			assets = new AssetManager(dragon, localeString);
+			assets = new AssetManager(dragon, localeString, isCustomLocale);
 			JOptionPane.setDefaultLocale(assets.locale);
 			if(clm != null){
-				clm.summonerManager.setChampionList(assets.championsByKey);
+				clm.getModule(LCUSummonerManager.class).setChampionList(assets.championsByKey);
 			}
 			System.out.println("Securing Cloud to Earth...");
 			if(dragon.finish()){
@@ -201,7 +222,7 @@ public class BookOfThresholds extends JFrame{
 		}catch(Throwable t){
 			t.printStackTrace();
 			JOptionPane.showMessageDialog(null, t.getMessage(), "Failed to start Rune Book of Thresholds", JOptionPane.ERROR_MESSAGE);
-			return;
+			break xxxxx;
 		}finally{
 			if(versionCheckFuture != null){
 				try{
@@ -243,7 +264,7 @@ public class BookOfThresholds extends JFrame{
 		if(clm == null){
 			JOptionPane.showMessageDialog(null, "Rune Book of Thresholds will not be able to export runes.");
 		}else{
-			clm.perkManager.setRuneModel(assets.runeModel);
+			clm.getModule(LCUPerksManager.class).setRuneModel(assets.runeModel);
 		}
 		/*{//Test code for rune permutations.
 			RuneModel model = assets.runeModel;
@@ -272,34 +293,25 @@ public class BookOfThresholds extends JFrame{
 			System.exit(0);
 		}*/
 		CompletableFuture<BookOfThresholds> cmpl = new CompletableFuture<>();
-		{
-			ArrayList<Build> buildList = new ArrayList<Build>(0);
+		final AssetManager assetProxy = assets;{
 			System.out.println("Loading saved runes...");
-			if(SAVE_FILE.exists()){
-				try(FileReader reader = new FileReader(SAVE_FILE,StandardCharsets.UTF_8)){
-					JSMap dataMap = JSON.asJSMap(JSON.readObject(reader), true);
-					JSList buildLst = dataMap.getJSList("builds");
-					buildList.ensureCapacity(buildLst.size());
-					for(Object obj : buildLst){
-						try{
-							JSMap bld = JSON.asJSMap(obj, true);
-							String name = bld.peekString("name");
-							String champ = bld.peekString("champion");
-							Champion champion = champ == null ? null : assets.championsById.get(champ);
-							byte roles = bld.peekByte("roles");
-							buildList.add(new Build(name, champion, assets.runeModel.parseRune(bld), roles,
-									bld.peekLong("order")));
-						}catch(Throwable t){
-							t.printStackTrace();
-						}
-					}
+			JSList buildLst = JSON.toJSList(dataMap.peek("builds"));
+			ArrayList<Build> buildList = new ArrayList<Build>(buildLst.size());
+			for(Object obj : buildLst){
+				try{
+					JSMap bld = JSON.toJSMap(obj);
+					String name = bld.peekString("name");
+					String champ = bld.peekString("champion");
+					Champion champion = champ == null ? null : assets.championsById.get(champ);
+					byte roles = bld.peekByte("roles");
+					buildList.add(new Build(name, champion, assets.runeModel.parseRune(bld), roles,
+							bld.peekLong("order")));
 				}catch(Throwable t){
 					t.printStackTrace();
 				}
 			}
 			System.out.println("Initializing window...");
 			final LCUManager clientManager = clm;
-			AssetManager assetProxy = assets;
 			EventQueue.invokeAndWait(() -> {
 				ToolTipManager.sharedInstance().setDismissDelay(Integer.MAX_VALUE);
 				try{
@@ -320,6 +332,16 @@ public class BookOfThresholds extends JFrame{
 		long nextSaveTime = 0;
 		CompletableFuture<String> shutdown = null;
 		AtomicBoolean k = runeBook.dataChangeFlag;
+		BiFunction<Map<?,?>,String,String> commentFunction = (a,b) -> {
+			if(a == dataMap.map && b != null){
+				switch(b){
+				case "builds":return "The list of builds.";
+				case "locale":return "The localization for Rune Book. Can be one of: "+assetProxy.listOfLocales;
+				}
+			}
+			return null;
+		};
+		dataMap.map.putIfAbsent("locale", null);
 		while(true){
 			synchronized(k){
 				while(!(k.get() || runeBook.shutdownInitiated)){
@@ -348,7 +370,12 @@ public class BookOfThresholds extends JFrame{
 				}
 				k.set(false);
 				List<Build> bls = runeBook.buildListModel.publicList;
-				JSList buildList = new JSList(bls.size());
+				JSList buildList = dataMap.peekJSList("builds");
+				if(buildList == null){
+					dataMap.put("builds", buildList = new JSList(bls.size()));
+				}else{
+					buildList.clear();
+				}
 				for(Build build : bls){
 					JSMap mp = build.getRune().toJSMap().put(
 							"name",build.getName(),
@@ -360,13 +387,18 @@ public class BookOfThresholds extends JFrame{
 					}
 					buildList.add(mp);
 				}
-				JSMap dataMap = new JSMap(Map.of("builds",buildList));
-				try(Writer writer = new JSON.PrettyWriter(new FileWriter(SAVE_FILE,StandardCharsets.UTF_8))){
+				boolean success = false;
+				try(Commentator writer = new JSON.Commentator(new FileWriter(TEMP_SAVE_FILE,StandardCharsets.UTF_8),commentFunction)){
 					JSON.write(dataMap, writer);
 					writer.flush();
+					writer.close();
+					success = true;
 				}catch(Throwable t){
 					System.err.println(shutdown == null ? "Ouch. Will see you in the next attempt." : "No. No! We can fix this!");
 					t.printStackTrace();
+				}
+				if(success && SAVE_FILE.delete()){
+					TEMP_SAVE_FILE.renameTo(SAVE_FILE);
 				}
 				nextSaveTime = currentTime+10000;
 			}else if(shutdown != null){
@@ -377,9 +409,10 @@ public class BookOfThresholds extends JFrame{
 				}
 				System.out.println("Goodbye.");
 				System.exit(0);
+				break xxxxx;
 			}
 		}
-	}
+	}System.exit(1);}
 	private final AtomicBoolean dataChangeFlag = new AtomicBoolean();
 	private volatile boolean shutdownInitiated = false;
 	private AssetManager assetManager;
@@ -437,7 +470,7 @@ public class BookOfThresholds extends JFrame{
 		{GridBagConstraints con = new GridBagConstraints(0, 0, 1, 1, 0, 0, GridBagConstraints.CENTER, GridBagConstraints.NONE,
 				new Insets(0,0,0,0), 0, 0);
 			con.fill = GridBagConstraints.BOTH;
-			exportButton = toolButton(3,4,"EXPORT",
+			exportButton = toolButton(5,4,"EXPORT",
 					assets.z.getString(client == null ? "exportCant" : "exportCan"),
 					false);
 			Border	basicBuildBorder = new LineBorder(new Color(0,true), 2, true),
@@ -447,10 +480,7 @@ public class BookOfThresholds extends JFrame{
 			rendererLabel.setDoubleBuffered(false);
 			rendererLabel.setBorder(basicBuildBorder);
 			rendererLabel.setHorizontalAlignment(SwingConstants.LEFT);
-			if(client == null){
-				exportButton = toolButton(3,4,"EXPORT",assets.z.getString("exportCant"),false);
-			}else{
-				exportButton = toolButton(3,4,"EXPORT",assets.z.getString("exportCan"),false);
+			if(client != null){
 				JLabel statusLabel = new JLabel();
 				statusLabel.setLayout(new BorderLayout());
 				//statusLabel.setForeground(Color.WHITE);
@@ -482,11 +512,11 @@ public class BookOfThresholds extends JFrame{
 				con.gridy++;
 				con.weighty = 1;
 				con.gridheight = 0;
-				JList<Build> list = new JList<>(client.perkManager);
+				JList<Build> list = new JList<>(client.getModule(LCUPerksManager.class));
 				list.setTransferHandler(transferer);
 				list.setDragEnabled(true);
 				list.setOpaque(false);
-				list.setSelectionModel(client.perkManager);
+				list.setSelectionModel(client.getModule(LCUPerksManager.class));
 				list.setCellRenderer((JList<? extends Build> l, Build v, int index,
 							boolean isSelected, boolean cellHasFocus) -> {
 								rendererBuildIcon.setBuild(v);
@@ -517,10 +547,10 @@ public class BookOfThresholds extends JFrame{
 				toolBar.setFloatable(false);
 				toolBar.add(exportButton);
 				exportButton.setVisible(false);
-				toolBar.add(completeButton = toolButton(2,4,"FIX",assets.z.getString("fix"),true));
+				toolBar.add(completeButton = toolButton(4,4,"FIX",assets.z.getString("fix"),true));
 				toolBar.add(nameField = new JTextField(16));
-				toolBar.add(eraseButton = toolButton(1,4,"ERASE",assets.z.getString("erase"),false));
-				toolBar.add(/*saveButton = */toolButton(1,3,"SAVE",assets.z.getString("save"),true));
+				toolBar.add(eraseButton = toolButton(3,4,"ERASE",assets.z.getString("erase"),false));
+				toolBar.add(/*saveButton = */toolButton(2,4,"SAVE",assets.z.getString("save"),true));
 				mainPanel.add(toolBar, con, 0);
 			}
 			con.gridy = 1;con.weighty = 1;
@@ -557,7 +587,6 @@ public class BookOfThresholds extends JFrame{
 				JComboBox<Champion> championBox = new JComboBox<>(assets.getSelectableChampionList());
 				//championBox.setOpaque(false);
 				championBox.setSelectedItem(null);
-				rendererLabel.setOpaque(true);
 				championBox.setRenderer((
 				        JList<? extends Champion> ls,
 				        Champion value,
@@ -579,7 +608,7 @@ public class BookOfThresholds extends JFrame{
 					assistant.setIconImage(assets.windowIcon);
 					assistantButton.setModel(assistant.callerModel);
 					mainViewToolBar.add(assistantButton);
-					LCUSummonerManager summonerManager = client.summonerManager;
+					LCUSummonerManager summonerManager = client.getModule(LCUSummonerManager.class);
 					final ActionListener btAct = (ActionEvent e) -> championBox.setSelectedItem(((JButton)e.getSource()).getIcon());
 					final JButton[] prefButtonList = new JButton[5];
 					final int[] prefList = new int[5];
@@ -630,7 +659,7 @@ public class BookOfThresholds extends JFrame{
 				buildList.setSelectionModel(buildListModel);
 				buildList.setLayoutOrientation(JList.HORIZONTAL_WRAP);
 				buildList.setVisibleRowCount(0);
-				JLabel newBuildLabel = new JLabel(assetManager.imageIconForImage(0, 4));
+				JLabel newBuildLabel = new JLabel(assetManager.imageIconForImage(1, 4));
 				newBuildLabel.setHorizontalTextPosition(SwingConstants.CENTER);
 				newBuildLabel.setVerticalTextPosition(SwingConstants.TOP);
 				newBuildLabel.setForeground(Color.WHITE);
@@ -781,7 +810,7 @@ public class BookOfThresholds extends JFrame{
 			}break;
 		case "EXPORT":
 			if(currentRune.isComplete){
-				clientManager.perkManager.exportRune(currentRune, nameField.getText()).thenAcceptAsync(
+				clientManager.getModule(LCUPerksManager.class).exportRune(currentRune, nameField.getText()).thenAcceptAsync(
 						(Object str) -> {
 						if(str instanceof String){
 							JOptionPane.showMessageDialog(this, 

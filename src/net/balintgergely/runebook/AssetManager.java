@@ -61,26 +61,43 @@ class AssetManager{
 	final Map<String,Champion> championsByEnglishName;
 	final Map<RuneModel.Stone,Image> runeIcons;
 	final Map<RuneModel.Stone,Color> runeColors;
+	final String listOfLocales;
 	BufferedImage windowIcon;
 	BufferedImage iconSprites;
 	BufferedImage background;
+	BufferedImage runeBase;
 	PropertyResourceBundle z;
 	Locale locale;
 	@SuppressWarnings("unchecked")
-	AssetManager(DataDragon dragon,String locale) throws IOException{
+	AssetManager(DataDragon dragon,String locale,boolean isCustomLocale) throws IOException{
 		Locale l = null;
+		JSList localeData = JSON.asJSList(dragon.fetchObject("languages.json"), true);
 		if(locale == null){
 			locale = (String)dragon.fetchObject("locale.txt");
+		}else if(isCustomLocale){
+			if(!localeData.list.contains(locale)){
+				locale = (String)dragon.fetchObject("locale.txt");
+			}else{
+				dragon.fetchObject("locale.txt");
+			}
 		}else{
 			dragon.putString("locale.txt", locale);//This time we got to retrieve client locale. Store it.
+		}
+		List<String> localeList = (List<String>)(List<?>)localeData.list;
+		{
+			StringBuilder bld = new StringBuilder(localeData.size()*6);
+			for(String str : localeList){
+				bld.append(str);
+				bld.append(',');
+			}
+			bld.setLength(bld.length()-1);
+			listOfLocales = bld.toString();
 		}
 		JSMap manifest = dragon.getManifest();
 		JSMap n = manifest.getJSMap("n");
 		String en = manifest.getString("l");
 		if(locale == null){//We have yet to retrieve the locale from the LCU. Use data dragon.
 			l = Locale.getDefault();
-			JSList localeData = JSON.asJSList(dragon.fetchObject("languages.json"), true);
-			List<String> localeList = (List<String>)(List<?>)localeData.list;
 			a: for(Locale lc : Control.getControl(Control.FORMAT_DEFAULT).getCandidateLocales("", l)){
 				String tag = lc.toLanguageTag().toLowerCase(Locale.ROOT).replace('-', '_');
 				for(String nm : localeList){
@@ -130,11 +147,6 @@ class AssetManager{
 				imageCollection.add("img/"+JSON.asString(value, true, null));
 			}
 		},-1);
-		//Instead of getting championFull.json just to fetch Last Chapter's icon, we directly go to her file.
-		String iconPath = n.getString("champion")+"/img/spell/"+
-						JSON.asJSMap(dragon.fetchObject(n.getString("champion")+"/data/en_US/champion/Yuumi.json"),true)
-						.getDeep("data","Yuumi","spells",3,"image","full");
-		imageCollection.add(iconPath);
 		dragon.batchPreload(imageCollection);
 
 		runeModel = new RuneModel(runeData, z);
@@ -200,12 +212,9 @@ class AssetManager{
 		championsById = Collections.unmodifiableNavigableMap(champById);
 		championsByKey = new ArrayListView<>(champByKey);
 		championsByEnglishName = Collections.unmodifiableMap(champByEng);
-		{//Rune Book? Book with power? Why not?
-			BufferedImage windIc = (BufferedImage)dragon.fetchObject(iconPath);//Here, Ryze's passive icon is another big candidate.
-			int hx = windIc.getWidth()/2,hy = windIc.getHeight()/2;//Unsealed Spellbook however is not the way to go due to being a keystone.
-			windowIcon = windIc.getSubimage(0, hy, hx, hy);
-		}
-		iconSprites = loadImageWithHash("icons.png",2467156344l);//Absolutely NO tampering please!
+		iconSprites = loadImageWithHash("icons.png",1700508143l);//Absolutely NO tampering please!
+		runeBase = loadImageWithHash("runebase.png",4054446114l);
+		windowIcon = iconSprites.getSubimage(4,98,16,20);
 		background = loadImageWithHash("background.png",1433901601l);
 	}
 	public boolean hasSubChampions(Champion ch){

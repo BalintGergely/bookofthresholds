@@ -61,20 +61,33 @@ public abstract class HybridListModel<E> extends AbstractListModel<E> implements
 		if(antiRecurse){
 			return;
 		}
-		leadIndex = index1;
-		anchorIndex = index1;
 		if(index1 < 0 || index1 >= getSize()){
 			throw new IllegalArgumentException();
 		}
+		leadIndex = index1;
+		anchorIndex = index1;
 		if(selectedIndex != index1){
 			int oldIndex = selectedIndex;
 			selectedIndex = index1;
 			if(oldIndex == -1){
 				fireValueChanged(index1, index1);
 			}else{
-				fireValueChanged(Math.min(index0, oldIndex),Math.max(index0, oldIndex));
+				fireValueChanged(Math.min(index1, oldIndex),Math.max(index1, oldIndex));
 			}
 			fireStateChanged();
+		}
+	}
+	protected void silentlySetSelection(int index){
+		leadIndex = index;
+		anchorIndex = index;
+		if(selectedIndex != index){
+			int oldIndex = selectedIndex;
+			selectedIndex = index;
+			if(oldIndex == -1){
+				fireValueChanged(index, index);
+			}else{
+				fireValueChanged(Math.min(index, oldIndex),Math.max(index, oldIndex));
+			}
 		}
 	}
 	@Override
@@ -170,9 +183,6 @@ public abstract class HybridListModel<E> extends AbstractListModel<E> implements
 		}
 		int min = Math.min(index0, index1);
 		int max = Math.max(index0, index1);
-		if(min < 0 || max >= getSize()){
-			throw new IllegalArgumentException();
-		}
 		if(selectedIndex >= 0 && selectedIndex >= min){
 			int oldIndex = selectedIndex;
 			if(selectedIndex > max){

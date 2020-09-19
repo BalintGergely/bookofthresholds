@@ -5,6 +5,7 @@ import static net.balintgergely.util.JSON.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -14,7 +15,7 @@ import java.util.Objects;
  * @author Bálint János Gergely
  */
 public final class JSMap{
-	public static final JSMap EMPTY_MAP = new JSMap(Map.of());
+	public static final JSMap EMPTY_MAP = new JSMap(Collections.emptyNavigableMap());
 	public final Map<String,Object> map;
 	public JSMap() {
 		map = new HashMap<String, Object>();
@@ -43,6 +44,10 @@ public final class JSMap{
 			return map == m || map.equals(m);
 		}
 		return false;
+	}
+	public JSMap clear(){
+		map.clear();
+		return this;
 	}
 	public JSMap put(String key,Object value){
 		map.put(String.valueOf(key), wrap(value));

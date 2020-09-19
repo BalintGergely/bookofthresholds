@@ -37,17 +37,15 @@ public class JSONBodyPublishing implements Subscription{
 	}
 	@Override
 	public void request(long n) {
-		if(n == 0 || sb == null){
-			return;
-		}
 		while(itr.hasNext()){
-			sb.onNext(itr.next().asReadOnlyBuffer());
-			n--;
 			if(n == 0 || sb == null){
 				return;
 			}
+			sb.onNext(itr.next().asReadOnlyBuffer());
+			n--;
 		}
 		sb.onComplete();
+		sb = null;
 	}
 	@Override
 	public void cancel() {

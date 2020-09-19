@@ -16,7 +16,7 @@ import net.balintgergely.runebook.RuneModel.Statstone;
 
 public class BuildIcon implements Icon{
 	private static final int G_WIDTH = 120,G_HEIGHT = 90,F_WIDTH = 160,F_HEIGHT = 42;
-	private static final Color STAT_MOD_BORDER = new Color(0xA88035),
+	private static final Color //STAT_MOD_BORDER = new Color(0xA88035),
 								GLASS_PANE_COLOR = new Color(0x50000000,true);
 	private final AssetManager assetManager;
 	private boolean gridVariant;
@@ -45,7 +45,7 @@ public class BuildIcon implements Icon{
 		gr.dispose();
 		return image;
 	}
-	public static void renderBuild(AssetManager mgr,Build build,boolean gridVariant,Graphics gr,int x,int y){
+	private static void renderBuild(AssetManager mgr,Build build,boolean gridVariant,Graphics gr,int x,int y){
 		if(build == null){
 			return;
 		}
@@ -54,6 +54,7 @@ public class BuildIcon implements Icon{
 		Rune rune = build.getRune();
 		int ox = x,oy = y;
 		if(gridVariant){
+			gr.drawImage(mgr.runeBase, x, y, null);
 			y += 12;
 			Champion champion = build.getChampion();
 			byte roles = build.getFlags();
@@ -64,6 +65,9 @@ public class BuildIcon implements Icon{
 				ngr.dispose();
 			}
 			mgr.paintRoleIcon(gr, roles, x+48, y);
+		}else{
+			gr.drawImage(mgr.runeBase, x+40, y, x+160, y+12, 0, 00, 120, 12, null);
+			gr.drawImage(mgr.runeBase, x+40, y+12, x+160, y+42, 0, 60, 120, 90, null);
 		}
 		if(rune != null){
 			boolean lockFlag = (build.getFlags() & 0x40) != 0;
@@ -101,8 +105,8 @@ public class BuildIcon implements Icon{
 			Path path = rune.primaryPath;
 			RuneModel model = rune.model;
 			for(int p = 0;p < 3;p++){
-				gr.setColor(GLASS_PANE_COLOR);
-				gr.fillRoundRect(x-17, y-2, 33, 27, 8, 8);
+				//gr.setColor(GLASS_PANE_COLOR);
+				//gr.fillRoundRect(x-17, y-2, 33, 27, 8, 8);
 				if(p == 2){
 					int slots = model.getStatSlotCount();
 					for(int i = 0;i < slots;i++){
@@ -130,7 +134,7 @@ public class BuildIcon implements Icon{
 						y += 8;
 					}
 					y -= slots*8;
-					gr.setColor(STAT_MOD_BORDER);
+					//gr.setColor(STAT_MOD_BORDER);
 				}else if(path != null){
 					int slots = path.getSlotCount();
 					Color pathColor = mgr.runeColors.get(path);
@@ -159,8 +163,8 @@ public class BuildIcon implements Icon{
 					}
 					y -= (slots-1)*8;
 					gr.setColor(pathColor);
+					gr.drawRoundRect(x-17, y-2, 33, 27, 10, 10);
 				}
-				gr.drawRoundRect(x-17, y-2, 33, 27, 10, 10);
 				path = rune.secondaryPath;
 				x += 36;
 			}

@@ -18,8 +18,6 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableRowSorter;
 
-import net.balintgergely.runebook.LCUManager.LCUSummonerManager;
-
 public class TraderAssistant extends JFrame{
 	private static final long serialVersionUID = 1L;
 	final ButtonModel callerModel;
@@ -31,7 +29,7 @@ public class TraderAssistant extends JFrame{
 		rendererLabel.setBorder(null);
 		//rendererLabel.setForeground(Color.WHITE);
 		rendererLabel.setHorizontalAlignment(SwingConstants.LEFT);
-		tableModel = client.summonerManager;
+		tableModel = client.getModule(LCUSummonerManager.class);
 		TableRowSorter<LCUSummonerManager> tableRowSorter = new TableRowSorter<>(tableModel);
 		tableRowSorter.setSortsOnUpdates(true);
 		JTable table = new JTable(tableModel);
