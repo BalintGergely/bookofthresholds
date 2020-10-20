@@ -5,6 +5,7 @@ import java.awt.Component;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.image.BufferedImage;
 
@@ -40,7 +41,7 @@ public class BuildIcon implements Icon{
 	public static BufferedImage toImage(AssetManager mgr,Build bld){
 		boolean gridVariant = ((bld.getFlags() & 0x1F) != 0) || (bld.getChampion() != null);
 		BufferedImage image = new BufferedImage(gridVariant ? G_WIDTH : F_WIDTH, gridVariant ? G_HEIGHT : F_HEIGHT, BufferedImage.TYPE_INT_ARGB);
-		Graphics gr = image.getGraphics();
+		Graphics2D gr = image.createGraphics();
 		renderBuild(mgr, bld, gridVariant, gr, 0, 0);
 		gr.dispose();
 		return image;
@@ -54,7 +55,7 @@ public class BuildIcon implements Icon{
 		Rune rune = build.getRune();
 		int ox = x,oy = y;
 		if(gridVariant){
-			gr.drawImage(mgr.runeBase, x, y, null);
+			gr.drawImage(mgr.runebase, x, y, null);
 			y += 12;
 			Champion champion = build.getChampion();
 			byte roles = build.getFlags();
@@ -64,10 +65,10 @@ public class BuildIcon implements Icon{
 				champion.paintIcon(null, ngr, 0, 0, 48, 48);
 				ngr.dispose();
 			}
-			mgr.paintRoleIcon(gr, roles, x+48, y);
+			mgr.paintRoleIcon(gr, roles, Color.WHITE, x+48, y);
 		}else{
-			gr.drawImage(mgr.runeBase, x+40, y, x+159, y+11, 0, 00, 119, 11, null);
-			gr.drawImage(mgr.runeBase, x+40, y+12, x+159, y+41, 0, 60, 119, 89, null);
+			gr.drawImage(mgr.runebase, x+40, y, x+159, y+11, 0, 00, 119, 11, null);
+			gr.drawImage(mgr.runebase, x+40, y+12, x+159, y+41, 0, 60, 119, 89, null);
 		}
 		if(rune != null){
 			boolean lockFlag = (build.getFlags() & 0x40) != 0;
@@ -169,7 +170,7 @@ public class BuildIcon implements Icon{
 				x += 36;
 			}
 		}
-		{
+		if(name != null && !name.isBlank()){
 			FontMetrics metrics = gr.getFontMetrics();
 			int width = metrics.stringWidth(name);
 			int xp = (G_WIDTH - width) / 2;

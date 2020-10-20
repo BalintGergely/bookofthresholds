@@ -1,35 +1,43 @@
 package net.balintgergely.runebook;
 
+import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.event.WindowEvent;
 import java.util.Comparator;
-import java.util.Enumeration;
 
-import javax.swing.ButtonModel;
+import javax.swing.Icon;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
-import javax.swing.JToggleButton;
-import javax.swing.SwingConstants;
 import javax.swing.event.ChangeEvent;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
-import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableRowSorter;
 
-public class TraderAssistant extends JFrame{
+import net.balintgergely.runebook.AssetManager.RoleIcon;
+import net.balintgergely.runebook.LCUSummonerManager.Summoner;
+import net.balintgergely.sutil.BackgroundPanel;
+import net.balintgergely.sutil.BareIconButton;
+
+public class TraderAssistant extends BookOfThresholds.Module{
 	private static final long serialVersionUID = 1L;
-	final ButtonModel callerModel;
-	private final LCUSummonerManager tableModel;
-	TraderAssistant(AssetManager assets,LCUManager client){
-		MasteryIcon masteryIcon = new MasteryIcon(assets.iconSprites);
-		JLabel rendererLabel = new JLabel();
-		rendererLabel.setDoubleBuffered(false);
-		rendererLabel.setBorder(null);
-		//rendererLabel.setForeground(Color.WHITE);
-		rendererLabel.setHorizontalAlignment(SwingConstants.LEFT);
-		tableModel = client.getModule(LCUSummonerManager.class);
+	private LCUSummonerManager tableModel;
+	TraderAssistant(BookOfThresholds main) {
+		super(main);
+		AssetManager assets = main.getAssetManager();
+		super.setTitle(assets.z.getString("tradeAssistWindow"));
+		super.setIconImage(assets.image(1, 3));
+	}
+	@Override
+	public void init(){
+		AssetManager assets = main.getAssetManager();
+		MasteryIcon masteryIcon = new MasteryIcon(assets.icons);
+		RoleIcon roleIcon = assets.new RoleIcon(AssetManager.SUPPORT);
+		BareIconButton renderer = new BareIconButton(null, Color.WHITE);
+		renderer.setIconTextGap(0);
+		renderer.setHoverColor(new Color(0x50000000,true));
+		tableModel = main.getLCUModule(LCUSummonerManager.class);
 		TableRowSorter<LCUSummonerManager> tableRowSorter = new TableRowSorter<>(tableModel);
 		tableRowSorter.setSortsOnUpdates(true);
 		JTable table = new JTable(tableModel);
@@ -39,51 +47,96 @@ public class TraderAssistant extends JFrame{
 		table.getTableHeader().setReorderingAllowed(false);
 		table.setRowHeight(24);
 		table.setAutoCreateRowSorter(false);
-		TableCellRenderer rendererForChampions = (JTable t, Object value, boolean isSelected, boolean hasFocus,
+		Color allyColor = new Color(0x92A0FF),enemyColor = new Color(0xFF4E50);
+		TableCellRenderer tableCellRenderer = (JTable t, Object value, boolean isSelected, boolean hasFocus,
 				int row, int column) -> {
-					Champion champion = (Champion)value;
-					rendererLabel.setText(champion.getName());
-					rendererLabel.setIcon(champion);
-					rendererLabel.setBorder(null);
-					return rendererLabel;
-		};
-		table.setDefaultRenderer(Number.class, (JTable t, Object value, boolean isSelected, boolean hasFocus,
-					int row, int column) -> {
-					if(value == null){
-						rendererLabel.setIcon(null);
+				Icon icon;
+				String text;
+				boolean armed;
+				Color color;
+				if(row < 0){
+					color = Color.WHITE;
+					armed = false;
+					if(column < 2){
+						icon = null;
+						text = (String)value;
 					}else{
-						masteryIcon.setStatusToDisplay(((Number)value).intValue());
-						rendererLabel.setIcon(masteryIcon);
+						Summoner sm = tableModel.getSummoner(column-2);
+						if(sm != null){
+							roleIcon.setRoles(sm.getPosition());
+							icon = roleIcon;
+							text = sm.toString();
+							roleIcon.setColor(sm.isEnemy() ? enemyColor : allyColor);
+						}else{
+							roleIcon.setRoles((byte)0);
+							icon = roleIcon;
+							text = null;
+							roleIcon.setColor(color);
+						}
 					}
-					rendererLabel.setText(null);
-					rendererLabel.setBorder(null);
-					return rendererLabel;
-		});
-		table.setDefaultRenderer(Champion.class, rendererForChampions);
+				}else{
+					switch(column){
+					case 0:
+						armed = true;
+						icon = (Icon)value;text = ((Champion)value).getName();
+						color = Color.WHITE;
+						break;
+					case 1:
+						if(value instanceof Summoner){
+							armed = false;
+							roleIcon.setRoles(((Summoner)value).getPosition());
+							icon = roleIcon;
+							text = value.toString();
+							color = ((Summoner)value).isEnemy() ? enemyColor : allyColor;
+							roleIcon.setColor(color);
+							break;
+						}//$FALL-THROUGH$
+					default:
+						color = Color.WHITE;
+						armed = false;
+						if(value != null){
+							masteryIcon.setStatusToDisplay(((Number)value).intValue());
+							icon = masteryIcon;
+						}else{
+							icon = null;
+						}
+						text = null;
+					}
+				}
+				renderer.setForeground(color);
+				renderer.setIcon(icon);
+				renderer.setText(text);
+				renderer.getModel().setArmed(armed);
+				//renderer.getModel().setRollover(isSelected);
+				return renderer;
+		};
+		tableRowSorter.setComparator(0, Comparator.naturalOrder());
+		table.setDefaultRenderer(Object.class, tableCellRenderer);
 		int maximumWidth = 0;
-		for(Champion champion : assets.championsByKey){
-			int width = rendererForChampions.getTableCellRendererComponent(null, champion, false, false, 0, 0).getPreferredSize().width;
+		for(Champion champion : assets.championList){
+			int width = tableCellRenderer.getTableCellRendererComponent(null, champion, false, false, 0, 0).getPreferredSize().width;
 			if(width > maximumWidth){
 				maximumWidth = width;
 			}
 		}
-		tableRowSorter.setComparator(0, Comparator.naturalOrder());
+		tableRowSorter.setComparator(1, LCUSummonerManager.SUMMONER_PRIORITY);
 		TableColumnModel columnModel = table.getColumnModel();
+		DefaultTableCellRenderer headerRenderer = new DefaultTableCellRenderer();
+		headerRenderer.setOpaque(false);
+		headerRenderer.setForeground(Color.WHITE);
 		columnModel.getColumn(0).setPreferredWidth(maximumWidth);
 		columnModel.getColumn(0).setHeaderValue(assets.z.getString("champion"));
-		for(int i = 1;i < tableModel.getColumnCount();i++){
-			tableRowSorter.setComparator(i, masteryIcon);
+		columnModel.getColumn(1).setPreferredWidth(maximumWidth);
+		columnModel.getColumn(1).setHeaderValue(assets.z.getString("summoner"));
+		for(int i = 2;i < tableModel.getColumnCount();i++){
+			tableRowSorter.setComparator(i, Comparator.reverseOrder());
+			columnModel.getColumn(i).setHeaderRenderer(tableCellRenderer);
+			columnModel.getColumn(i).setPreferredWidth(72);
 		}
+		table.getTableHeader().setBackground(Color.DARK_GRAY);
+		table.getTableHeader().setDefaultRenderer(tableCellRenderer);
 		table.setAutoCreateColumnsFromModel(false);
 		tableModel.addChangeListener((ChangeEvent e) -> {
-			Enumeration<TableColumn> columns = columnModel.getColumns();
-			while(columns.hasMoreElements()){
-				TableColumn column = columns.nextElement();
-				int index = column.getModelIndex();
-				if(index > 0){
-					column.setHeaderValue(tableModel.getColumnName(index));
-				}
-			}
 			table.getTableHeader().repaint();
 		});
 		table.setShowGrid(false);
@@ -93,22 +146,18 @@ public class TraderAssistant extends JFrame{
 		sp.setBorder(null);
 		sp.setOpaque(false);
 		sp.getViewport().setOpaque(false);
-		super.add(sp);
+		BackgroundPanel bck = new BackgroundPanel(assets.petricite);
+		bck.setLayout(new BorderLayout());
+		bck.add(sp);
+		super.add(bck);
 		super.pack();
+		super.setSize(super.getWidth()+200,super.getHeight());
 		super.setLocationRelativeTo(null);
 		super.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-		this.callerModel = new JToggleButton.ToggleButtonModel();
-		callerModel.addChangeListener(this::stateChanged);
-	}
-	private void stateChanged(ChangeEvent e){
-		tableModel.setDetailed(callerModel.isEnabled());
-		super.setVisible(callerModel.isSelected());
 	}
 	@Override
-	protected void processWindowEvent(WindowEvent e) {
-		super.processWindowEvent(e);
-		if (e.getID() == WindowEvent.WINDOW_CLOSING) {
-			callerModel.setSelected(false);
-		}
+	void stateChanged(ChangeEvent e){
+		super.stateChanged(e);
+		tableModel.setDetailed(callerModel.isEnabled());
 	}
 }

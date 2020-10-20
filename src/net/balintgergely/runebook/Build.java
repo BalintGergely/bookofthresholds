@@ -1,8 +1,15 @@
 package net.balintgergely.runebook;
 
+import java.util.Arrays;
 import java.util.Objects;
 
-public class Build implements Cloneable{
+import net.balintgergely.util.NavigableList;
+import net.balintgergely.util.NavigableList.StringList;
+import net.balintgergely.util.OrdinalCollection;
+import net.balintgergely.util.OrdinalMap;
+import net.balintgergely.util.OrdinalSet;
+
+public class Build implements Cloneable,OrdinalMap<String,Object>{
 	private Champion champion;
 	private byte flags;
 	private Rune rune;
@@ -55,5 +62,36 @@ public class Build implements Cloneable{
 	@Override
 	public Build clone() throws CloneNotSupportedException{
 		return (Build)super.clone();
+	}
+	@Override
+	public OrdinalSet<String> keySet() {
+		return KEYS;
+	}
+	@Override
+	public OrdinalCollection<Object> values() {
+		throw new UnsupportedOperationException();
+	}
+	public static final StringList KEYS = new NavigableList.StringList(
+Arrays.asList("champion","name","primaryStyleId","subStyleId","roles","selectedPerkIds","order"));
+	@Override
+	public String getKey(int index) {
+		return KEYS.get(index);
+	}
+	@Override
+	public Object getValue(int index) {
+		return get(KEYS.get(index));
+	}
+	@Override
+	public Object get(Object key) {
+		switch((String)key){
+		case "champion":return champion;
+		case "name":return name;
+		case "primaryStyleId":return rune == null ? null : rune.primaryPath;
+		case "subStyleId":return rune == null ? null : rune.secondaryPath;
+		case "roles":return flags;
+		case "selectedPerkIds":return rune;
+		case "order":return order;
+		default:return null;
+		}
 	}
 }

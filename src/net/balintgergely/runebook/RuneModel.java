@@ -9,6 +9,7 @@ import java.util.PropertyResourceBundle;
 import java.util.TreeMap;
 
 import net.balintgergely.util.ArrayListView;
+import net.balintgergely.util.JSConvertible;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
@@ -94,7 +95,7 @@ public final class RuneModel extends ArrayListView<RuneModel.Path>{
 	public Statstone getStatstone(int slot,int index){
 		return statStones[STAT_MODEL[slot][index]];
 	}
-	public static abstract class Stone{
+	public static abstract class Stone implements JSConvertible{
 		public final String imageRoute;
 		public final String name;
 		public final int id;
@@ -104,6 +105,10 @@ public final class RuneModel extends ArrayListView<RuneModel.Path>{
 			this.name = name;
 			this.id = id;
 			this.order = order;
+		}
+		@Override
+		public Object convert() {
+			return Integer.valueOf(id);
 		}
 	}
 	public static class Path extends Stone{

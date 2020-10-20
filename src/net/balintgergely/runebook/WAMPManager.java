@@ -12,7 +12,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import net.balintgergely.util.JSList;
@@ -21,12 +20,18 @@ import net.balintgergely.util.JSON;
 
 public class WAMPManager implements WebSocket.Listener{
 	private BiConsumer<WAMPManager,WebSocket> updateListener;
-	private Map<String,Consumer<Object>> listenerMap;
+	private Map<String,BiConsumer<String,Object>> listenerMap;
 	private CompletableFuture<WebSocket> stage;
 	private volatile WebSocket currentWebSocket;
-	public WAMPManager(BiConsumer<WAMPManager,WebSocket> updateListener,Map<String,Consumer<Object>> eventListeners){
+	public WAMPManager(BiConsumer<WAMPManager,WebSocket> updateListener){
 		this.updateListener = updateListener;
-		this.listenerMap = eventListeners;
+	}
+	public boolean isListenerMapSet(){
+		return listenerMap != null;
+	}
+	public synchronized void setListenerMap(Map<String,BiConsumer<String,Object>> listenerMap){
+		this.listenerMap = listenerMap;
+		subscribeAgain();
 	}
 	public synchronized CompletableFuture<WebSocket> open(WebSocket.Builder builder,URI uri){
 		if(stage != null){
@@ -63,9 +68,9 @@ public class WAMPManager implements WebSocket.Listener{
 		System.out.println("WAMPManager: open");
 	}
 	private CompletableFuture<WebSocket> subscribeChain(WebSocket webSocket){
-		Iterator<String> itr = listenerMap.keySet().iterator();
+		Iterator<String> itr;
 		CompletableFuture<WebSocket> cs;
-		if(itr.hasNext()){
+		if(listenerMap != null && ((itr = listenerMap.keySet().iterator()).hasNext())){
 			cs = webSocket.sendText(nextOf(itr), true);
 			if(itr.hasNext()){
 				AtomicReference<Function<WebSocket,CompletableFuture<WebSocket>>> arf = new AtomicReference<>();
@@ -170,11 +175,11 @@ public class WAMPManager implements WebSocket.Listener{
 		if(list != null && list.peekInt(0) == 8){
 			String key = list.peekString(1);
 			if(key != null){
-				Consumer<Object> cns = listenerMap.get(key);
+				BiConsumer<String,Object> cns = listenerMap.get(key);
 				JSMap mp = JSON.toJSMap(list.peek(2));
 				if(cns != null && mp.map.containsKey("data")){
 					try{
-						cns.accept(mp.map.get("data"));//Can be mapped to null.
+						cns.accept(mp.getString("eventType"),mp.map.get("data"));//Can be mapped to null.
 					}catch(Exception e){
 						e.printStackTrace();
 					}

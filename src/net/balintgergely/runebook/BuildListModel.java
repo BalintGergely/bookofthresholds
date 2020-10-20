@@ -17,6 +17,11 @@ import javax.swing.event.ListDataListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 
+import net.balintgergely.sutil.HybridListModel;
+import net.balintgergely.util.JSList;
+import net.balintgergely.util.JSMap;
+import net.balintgergely.util.JSON;
+
 /**
  * This class manages the full list of Builds as well as (in the future) filtered and sorted subsets of it.
  * Acts as both a list model and a list selection model in single selection mode. The selection can not be altered
@@ -30,13 +35,27 @@ public class BuildListModel extends HybridListModel<Build>{
 	private CopyOnWriteArrayList<Build> fullList;
 	private List<Build> list;
 	private Comparator<Build> sortingOrder = BY_ORDER;
-	public BuildListModel(Collection<Build> initials) {
-		fullList = new CopyOnWriteArrayList<>(initials);
-		fullList.sort(BY_ORDER);
-		int size = fullList.size();
-		for(int i = 0;i < size;i++){
-			fullList.get(i).setOrder(i);
+	public BuildListModel(AssetManager assetManager,JSList source) {
+		list = new ArrayList<>(source.size());
+		for(Object obj : source){
+			try{
+				JSMap bld = JSON.toJSMap(obj);
+				String name = bld.peekString("name");
+				String champ = bld.peekString("champion");
+				Champion champion = champ == null ? null : assetManager.championsById.get(champ);
+				byte roles = bld.peekByte("roles");
+				list.add(new Build(name, champion, assetManager.runeModel.parseRune(bld), roles,
+						bld.peekLong("order")));
+			}catch(Throwable t){
+				t.printStackTrace();
+			}
 		}
+		list.sort(BY_ORDER);
+		int size = list.size();
+		for(int i = 0;i < size;i++){
+			list.get(i).setOrder(i);
+		}
+		fullList = new CopyOnWriteArrayList<>(list);
 		publicList = Collections.unmodifiableList(fullList);
 		list = new ArrayList<Build>(fullList);
 	}

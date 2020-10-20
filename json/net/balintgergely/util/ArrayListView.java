@@ -5,23 +5,27 @@ import java.util.AbstractCollection;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.RandomAccess;
+import java.util.Spliterator;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 import net.balintgergely.util.Immutable.ImmutableList;
+import net.balintgergely.util.OrdinalCollection.OrdinalList;
 
 /**
  * A list view over an array. The array may not be modified through this list.
  * @author balintgergely
  */
-public class ArrayListView<E> extends AbstractCollection<E> implements List<E>,RandomAccess{
+public class ArrayListView<E> extends AbstractCollection<E> implements OrdinalList<E>,RandomAccess{
 	protected final E[] data;
 	public ArrayListView(@SuppressWarnings("unchecked") E... data){
-		this.data = data;
+		this.data = Objects.requireNonNull(data);
 	}
 	@Override
 	public void forEach(Consumer<? super E> action) {
@@ -144,25 +148,28 @@ public class ArrayListView<E> extends AbstractCollection<E> implements List<E>,R
 		return -1;
 	}
 	@Override
-	public ArrayIterator<E> iterator() {
+	public IndexIterator.OfArray<E> iterator() {
 		return listIterator(0);
 	}
 	@Override
-	public ArrayIterator<E> spliterator() {
+	public IndexIterator.OfArray<E> spliterator() {
 		return listIterator(0);
 	}
 	@Override
-	public ArrayIterator<E> listIterator() {
+	public IndexIterator.OfArray<E> listIterator() {
 		return listIterator(0);
 	}
 	@Override
-	public ArrayIterator<E> listIterator(int index) {
-		return new ArrayIterator<>(data,index);
+	public IndexIterator.OfArray<E> listIterator(int index) {
+		return new IndexIterator.OfArray<>(data,0,index,data.length,Spliterator.IMMUTABLE);
 	}
 	@Override
 	public List<E> subList(int fromIndex, int toIndex) {
 		if(fromIndex < 0 || toIndex < 0 || fromIndex > toIndex || toIndex > data.length){
 			throw new IndexOutOfBoundsException();
+		}
+		if(fromIndex == 0 && toIndex == data.length){
+			return this;
 		}
 		if(fromIndex == toIndex){
 			return List.of();
@@ -286,17 +293,21 @@ public class ArrayListView<E> extends AbstractCollection<E> implements List<E>,R
 			return false;
 		}
 		@Override
-		public ArrayIterator<E> listIterator(int index) {
-			return new ArrayIterator<>(data,offset,offset+index,offset+length);
+		public IndexIterator.OfArray<E> listIterator(int index) {
+			return new IndexIterator.OfArray<E>(data,offset,offset+index,offset+length,Spliterator.IMMUTABLE);
 		}
 		@Override
 		public boolean equals(Object o) {
 			if(this == o){
 				return true;
 			}
+			if(o instanceof ImmutableList.SubList){
+				ImmutableList.SubList<?> od = (ImmutableList.SubList<?>)o;
+				return Arrays.equals(data, offset, offset+length, od.data, od.offset, od.offset+od.length);
+			}
 			if(o instanceof ImmutableList){
 				ImmutableList<?> od = (ImmutableList<?>)o;
-				return Arrays.equals(data, offset, offset+length, od.data, od.offset, od.offset+od.length);
+				return Arrays.equals(data, offset, offset+length, od.data, 0, od.data.length);
 			}
 			return false;
 		}
@@ -333,10 +344,53 @@ public class ArrayListView<E> extends AbstractCollection<E> implements List<E>,R
 			if(fromIndex < 0 || toIndex < 0 || fromIndex > toIndex || toIndex > length){
 				throw new IndexOutOfBoundsException();
 			}
+			if(fromIndex == 0 && toIndex == length){
+				return this;
+			}
 			if(fromIndex == toIndex){
 				return List.of();
 			}
 			return fromIndex == 0 && toIndex == length ? this : new SubList<>(data, offset+fromIndex, fromIndex-toIndex);
 		}
+	}
+	@Override
+	public int hashCode(){
+		int index = 0,size = size();
+		int hashCode = 1;
+		while(index < size){
+			hashCode = 31 * hashCode + Objects.hashCode(get(index));
+			index++;
+		}
+		return hashCode;
+	}
+	@Override
+	public boolean equals(Object o) {
+		if(o == this){
+			return true;
+		}
+		if(o instanceof List && o instanceof RandomAccess){
+			List<?> lst = (List<?>)o;
+			int length0 = size(),length1 = lst.size();
+			if(length0 != length1){
+				return false;
+			}
+			for(int index = 0;index < length0;index++){
+				if(!Objects.equals(get(index), lst.get(index))){
+					return false;
+				}
+			}
+			return true;
+		}else if(o instanceof Iterable){
+			int length0 = size(),index = 0;
+			Iterator<?> itr = ((Iterable<?>)o).iterator();
+			while(index < length0){
+				if(!(itr.hasNext() && Objects.equals(get(index), itr.next()))){
+					return false;
+				}
+				index++;
+			}
+			return !itr.hasNext();
+		}
+		return false;
 	}
 }

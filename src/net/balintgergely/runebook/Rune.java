@@ -115,7 +115,9 @@ public final class Rune extends ArrayListView<Stone>{
 		if(model == null){
 			throw new IllegalArgumentException("Unable to resolve model!");
 		}
-		if(count != stoneArray.length){
+		if(count == 0){
+			stoneArray = EMPTY_STONE_ARRAY;
+		}else if(count != stoneArray.length){
 			stoneArray = Arrays.copyOf(stoneArray, count);
 		}
 		if(!pathLocked && inSecondary > 2){

@@ -10,16 +10,17 @@ import java.io.Writer;
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.PrimitiveIterator;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,23 +35,8 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 public final class JSON {
-	public static void main(String[] atgs){
-		System.out.println(Map.entry("JS", "ON").getClass() == immMapEntry);
-		System.out.println("JSON");
-	}
 	public static final Pattern NUMBER_PATTERN = Pattern.compile("-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?");
-	public static final Class<?> immMapEntry;
 	public static final Comparator<Map.Entry<String,Object>> MAP_ENTRY_COMPARATOR = Comparator.comparing(Map.Entry::getKey);
-	static {
-		Class<?> m = null;
-		try{
-			m = Class.forName(Map.class.getModule(), "java.util.KeyValueHolder");
-		}catch(Throwable t){}
-		if(m == null){
-			m = Map.entry("", "").getClass();
-		}
-		immMapEntry = m;
-	}
 	private int flag = -2;
 	private JSON(){}
 	/**
@@ -367,7 +353,14 @@ public final class JSON {
 			throw new IllegalArgumentException();
 		}
 	}
+	public static Object convert(Object obj){
+		while(obj instanceof JSConvertible){
+			obj = ((JSConvertible)obj).convert();
+		}
+		return obj;
+	}
 	public static void write(Object obj,Appendable output) throws IOException{
+		obj = convert(obj);
 		if(obj instanceof JSMap){
 			write(((JSMap)obj).map,output);
 		}else if(obj instanceof JSList){
@@ -414,7 +407,6 @@ public final class JSON {
 		if(map == null){
 			b.append("null");
 		}else{
-			boolean f = false;
 			@SuppressWarnings("resource")
 			Commentator cmt = b instanceof Commentator ? (Commentator)b : null;
 			@SuppressWarnings("unchecked")
@@ -424,20 +416,43 @@ public final class JSON {
 			}else{
 				cmt.openAndComment('{',cmt.commentator.apply(castMap, null));
 			}
-			for(Entry<?,?> e : map.entrySet()){
-				Object k = e.getKey();
-				if(k instanceof String || ((k = k.toString()) != null)){
-					if(f){
-						b.append(',');
+			boolean f = false;
+			if(map instanceof OrdinalMap){
+				OrdinalMap<?,?> om = (OrdinalMap<?,?>)map;
+				PrimitiveIterator.OfInt indices = om.indexIterator();
+				while(indices.hasNext()){
+					int index = indices.nextInt();
+					Object k = om.getKey(index);
+					if(k instanceof String || ((k = k.toString()) != null)){
+						if(f){
+							b.append(',');
+						}
+						String key = (String)k;
+						if(cmt != null){
+							cmt.writeComment(cmt.commentator.apply(castMap, key));
+						}
+						write(key,b);
+						b.append(':');
+						write(om.getValue(index),b);
+						f = true;
 					}
-					String key = (String)k;
-					if(cmt != null){
-						cmt.writeComment(cmt.commentator.apply(castMap, key));
+				}
+			}else{
+				for(Entry<?,?> e : map.entrySet()){
+					Object k = e.getKey();
+					if(k instanceof String || ((k = k.toString()) != null)){
+						if(f){
+							b.append(',');
+						}
+						String key = (String)k;
+						if(cmt != null){
+							cmt.writeComment(cmt.commentator.apply(castMap, key));
+						}
+						write(key,b);
+						b.append(':');
+						write(e.getValue(),b);
+						f = true;
 					}
-					write(key,b);
-					b.append(':');
-					write(e.getValue(),b);
-					f = true;
 				}
 			}
 			b.append('}');
@@ -896,42 +911,42 @@ public final class JSON {
 			return (Map<String,Object>)map;
 		}
 		if(map.isEmpty()){
-			return Map.of();
+			return Collections.emptyNavigableMap();
 		}
-		Map.Entry<String,Object>[] target = (Map.Entry<String,Object>[])new Map.Entry<?, ?>[map.size()];
+		String[] keys = new String[map.size()];
 		int length = 0;
-		for(Map.Entry<?, ?> entry : map.entrySet()){
-			Object k = entry.getKey();
-			String sk = k == null ? null : (k instanceof String ? (String)k : k.toString());
-			if(sk != null){
-				if(target.length == length){
-					target = Arrays.copyOf(target, length+1);
+		for(Object s : map.keySet()){
+			if(s != null && (s = s.toString()) != null){
+				if(length == keys.length){
+					keys = Arrays.copyOf(keys, Math.max(map.size(), length+1));
 				}
-				Object v = entry.getValue();
-				Object vf = freeze(v);
-				if(k == sk && v == vf && (entry instanceof AbstractMap.SimpleImmutableEntry || immMapEntry.isInstance(entry))){
-					target[length++] = (Map.Entry<String, Object>)entry;
-				}else{
-					target[length++] = new AbstractMap.SimpleImmutableEntry<>(sk, vf);
-				}
+				keys[length++] = (String)s;
 			}
 		}
 		if(length == 0){
-			return Map.of();
+			return Collections.emptyNavigableMap();
 		}
-		Arrays.sort(target, 0, length, MAP_ENTRY_COMPARATOR);
-		String latest = target[0].getKey();
+		Arrays.sort(keys,0,length);
+		Object[] values = new Object[length];
+		String prevKey = keys[0];
+		values[0] = freeze(map.get(prevKey));
 		int a = 1,b = 1;
-		while(a < length){
-			String current = target[a].getKey();
-			if(!latest.equals(current)){
-				latest = current;
-				target[b] = target[a];
+		while(b < length){
+			String key = keys[a];
+			if(!key.equals(prevKey)){
+				values[b] = freeze(map.get(key));
+				keys[b] = key;
 				b++;
 			}
 			a++;
 		}
-		return new Immutable.ImmutableMap(b < target.length ? Arrays.copyOf(target, b) : target);
+		if(b < length){
+			values = Arrays.copyOf(values,b);
+			keys = Arrays.copyOf(keys,b);
+		}
+		return ImmutableOrdinalMap.combine(
+				new NavigableList.StringList(keys),
+				new Immutable.ImmutableList<>(values));
 	}
 	@SuppressWarnings("unchecked")
 	public static List<Object> freezeList(Iterable<?> itr){
@@ -944,7 +959,7 @@ public final class JSON {
 		if(itr instanceof Collection<?>){
 			Collection<?> col = (Collection<?>)itr;
 			if(col.isEmpty()){
-				return List.of();
+				return Collections.emptyList();
 			}
 			Object[] target = new Object[col.size()];
 			int index = 0;
@@ -954,13 +969,13 @@ public final class JSON {
 				}
 				target[index++] = freeze(obj);
 			}
-			return target.length == 0 ? List.of() : new Immutable.ImmutableList<>(index < target.length ? Arrays.copyOf(target, index) : target);
+			return target.length == 0 ? Collections.emptyList() : new Immutable.ImmutableList<>(index < target.length ? Arrays.copyOf(target, index) : target);
 		}
 		LinkedList<Object> target = new LinkedList<>();
 		for(Object obj : itr){
 			target.add(freeze(obj));
 		}
-		return target.isEmpty() ? List.of() : new Immutable.ImmutableList<>(target.toArray());
+		return target.isEmpty() ? Collections.emptyList() : new Immutable.ImmutableList<>(target.toArray());
 	}
 	/**
 	 * If the value is a known immutable type, returns the value.<br>
@@ -968,6 +983,7 @@ public final class JSON {
 	 * Otherwise return value.toString();
 	 */
 	public static Object freeze(Object value){
+		value = convert(value);
 		if(value instanceof JSMap){
 			return freeze((JSMap)value);
 		}else if(value instanceof JSList){
@@ -1006,7 +1022,7 @@ public final class JSON {
 		}else if(value.getClass().isArray()){
 			int len = Array.getLength(value);
 			if(len == 0){
-				return new JSList(List.of());
+				return new JSList(Collections.emptyList());
 			}
 			Object[] data = new Object[len];
 			for(int i = 0;i < len;i++){

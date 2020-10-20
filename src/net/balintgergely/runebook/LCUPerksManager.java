@@ -7,10 +7,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 import net.balintgergely.runebook.LCUManager.LCUDataRoute;
 import net.balintgergely.runebook.LCUManager.LCUModule;
+import net.balintgergely.sutil.HybridListModel;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
@@ -19,7 +20,7 @@ import net.balintgergely.util.JSONBodySubscriber;
 
 public class LCUPerksManager extends HybridListModel<Build> implements LCUModule{
 	@Override
-	public Map<LCUDataRoute, Consumer<Object>> getDataRoutes() {
+	public Map<LCUDataRoute, BiConsumer<String,Object>> getDataRoutes() {
 		return Map.of(new LCUDataRoute("lol-perks/v1/pages","OnJsonApiEvent_lol-perks_v1_pages",false), this::perksChanged,
 					  new LCUDataRoute("lol-perks/v1/inventory","OnJsonApiEvent_lol-perks_v1_inventory",false), this::inventoryChanged);
 	}
@@ -30,8 +31,9 @@ public class LCUPerksManager extends HybridListModel<Build> implements LCUModule
 	private JSList perkList;
 	private int ownedPageCount = -1;
 	private LCUManager theManager;
-	LCUPerksManager(LCUManager md){
+	LCUPerksManager(LCUManager md,RuneModel model){
 		this.theManager = md;
+		this.model = model;
 	}
 	@Override
 	public Build getElementAt(int index) {
@@ -40,13 +42,6 @@ public class LCUPerksManager extends HybridListModel<Build> implements LCUModule
 	@Override
 	public int getSize() {
 		return buildList.size();
-	}
-	public void setRuneModel(RuneModel model){
-		this.model = model;
-		JSList pr = perkList;
-		if(pr != null){
-			EventQueue.invokeLater(() -> update(pr));
-		}
 	}
 	public CompletableFuture<Object> exportRune(Rune rune,String name){
 		BodyPublisher runeExport = JSONBodyPublishing.publish(rune.toJSMap().put("name", name, "current", Boolean.TRUE));
@@ -86,13 +81,13 @@ public class LCUPerksManager extends HybridListModel<Build> implements LCUModule
 		}
 		return theManager.client.sendAsync(exportRequest, JSONBodySubscriber.HANDLE_UTF8).thenApply(LCUManager::bodyOf);
 	}
-	private void inventoryChanged(Object o){
+	private void inventoryChanged(String m,Object o){
 		int pc = JSON.toJSMap(o).peekInt("ownedPageCount",-1);
 		if(pc >= 0){
 			ownedPageCount = pc;
 		}
 	}
-	private void perksChanged(Object o){
+	private void perksChanged(String m,Object o){
 		if(o instanceof JSList){
 			JSList pl = (JSList)o;
 			this.perkList = pl;

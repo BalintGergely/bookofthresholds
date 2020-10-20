@@ -34,7 +34,7 @@ import java.net.http.HttpResponse.BodyHandlers;
  * and the current JVM is terminated.<br>
  * The main method within this class handles the logic of
  * downloading the updated .jar file. Once it is downloaded with a separate temporary name,
- * the original file is deleted and replaced with it. Then it is launched with the parameter
+ * the original file is deleted and replaced with it. Then it is launched with the
  * parameter "-finishUpdate" followed by the absolute path to Updater.jar.<br>
  * Finally it is the responsibility of the updated application to call
  * <code>finishUpdate(String)</code> with the parameter path in order to clean up the old Updater.jar.
@@ -96,7 +96,7 @@ public class Updater {private Updater() {}
 				try{
 					int totalLength = Integer.parseInt(lengthString);
 					EventQueue.invokeLater(() -> {
-						progressBarModel.setMaximum(totalLength+1);//Let's not display 100% until we are actually done.
+						progressBarModel.setMaximum(totalLength+1);//Let's not display 100% until we are truly done.
 						referenceHolder.progressBar.setIndeterminate(false);
 					});
 				}catch(Throwable th){

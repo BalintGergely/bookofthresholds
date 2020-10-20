@@ -19,12 +19,14 @@ import javax.swing.ListModel;
 import javax.swing.ListSelectionModel;
 import javax.swing.TransferHandler;
 
+import net.balintgergely.sutil.HybridListModel;
+
 class BuildTransferHandler extends TransferHandler {
 	private static final DataFlavor PRIVATE_FLAVOR = new DataFlavor(BuildTransferable.class, "Rune Book Page");
 	private static final DataFlavor[] SUPPORTED =  new DataFlavor[]{PRIVATE_FLAVOR,DataFlavor.imageFlavor,DataFlavor.stringFlavor};
 	private static final long serialVersionUID = 1L;
-	private final BookOfThresholds bot;
-	BuildTransferHandler(BookOfThresholds bot){
+	private final RuneBook bot;
+	BuildTransferHandler(RuneBook bot){
 		this.bot = bot;
 	}
 	@Override
@@ -39,7 +41,7 @@ class BuildTransferHandler extends TransferHandler {
 				bld = tr.build;
 			}else if(t.isDataFlavorSupported(DataFlavor.stringFlavor)){
 				String str = (String)t.getTransferData(DataFlavor.stringFlavor);
-				bld = Mobafire.resolveBuild(bot.getAssetManager(), str);
+				bld = Mobafire.resolveBuild(bot.main.getAssetManager(), str);
 			}else{
 				return false;
 			}
@@ -167,7 +169,7 @@ class BuildTransferHandler extends TransferHandler {
 			return false;
 		}
 		private Image toImage(){
-			return image == null ? image = BuildIcon.toImage(bot.getAssetManager(),build) : image;
+			return image == null ? image = BuildIcon.toImage(bot.main.getAssetManager(),build) : image;
 		}
 		@Override
 		public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {

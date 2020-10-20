@@ -25,7 +25,6 @@ import javax.swing.border.LineBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
-import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
@@ -35,6 +34,8 @@ import net.balintgergely.runebook.Champion.Variant;
 import net.balintgergely.runebook.RuneButtonGroup.RuneButtonModel;
 import net.balintgergely.runebook.RuneModel.Runestone;
 import net.balintgergely.runebook.RuneModel.Stone;
+import net.balintgergely.sutil.BareIconButton;
+import net.balintgergely.sutil.ListComboBoxModel;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -51,7 +52,6 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 								TYPE_RUNESTONE = 3,
 								TYPE_STAT_MOD = 4;
 	private static final long serialVersionUID = 1L;
-	private static final String[] ROLE_NAMES = new String[]{"roleTop","roleMid","roleBot","roleJg","roleSp"};
 	private IdentityHashMap<Stone, Image> grayscaleIconVariants = new IdentityHashMap<>();
 	private static final Color TT_BACKGROUND = new Color(0xFF010A13),TT_FOREGROUND = new Color(0xFFCEC6B7);
 	private static final Border TT_BORDER = new CompoundBorder(new LineBorder(new Color(0xFF00080E),1), new LineBorder(new Color(0xFF463714), 2));
@@ -127,22 +127,10 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		mainGroup.add(buildGroup0);
 		//mainGroup.add(buildGroup1);
 		{
-			championBox = new JComboBox<>(assetManager.getSelectableChampionList());
+			championBox = new JComboBox<>(new ListComboBoxModel<>(assets.championsSortedByName));
 			//championBox.setOpaque(false);
 			championBox.setSelectedItem(null);
-			JLabel rendererLabel = new JLabel();
-			rendererLabel.setOpaque(true);
-			championBox.setRenderer((
-			        JList<? extends Champion> list,
-			        Champion value,
-			        int index,
-			        boolean isSelected,
-			        boolean cellHasFocus) -> {
-			        	rendererLabel.setIcon(value);
-			        	rendererLabel.setText(cellHasFocus || value == null ? "" : value.getName());
-			        	rendererLabel.setBackground(isSelected ? Color.WHITE : Color.LIGHT_GRAY);
-			        	return rendererLabel;
-			        });
+			championBox.setRenderer(new BareIconButton(null,Color.BLACK));
 			championBox.addItemListener((ItemEvent e) -> {
 				if(e.getStateChange() == ItemEvent.DESELECTED){
 					variantButton.setVisible(false);
@@ -160,7 +148,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 			});
 			championBox.setMaximumSize(championBox.getPreferredSize());
 			buildGroup0.add(championBox);
-			buildGroup0.add(variantButton = new BareIconButton(null),24,24);
+			buildGroup0.add(variantButton = new BareIconButton(null,Color.WHITE),24,24);
 			variantButton.setVisible(false);
 			variantButton.addActionListener((ActionEvent e) -> {
 				if(variantList != null){
@@ -179,10 +167,10 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		{
 			roles = new BareIconButton[5];
 			for(int i = 0;i < 5;i++){
-				BareIconButton bt = new BareIconButton(assetManager.new RoleIcon((byte)(1 << i)));
+				BareIconButton bt = new BareIconButton(assetManager.new RoleIcon((byte)(1 << i)),Color.WHITE);
 				bt.setMaximumSize(new Dimension(24,24));
 				bt.setModel(new ToggleButtonModel());
-				bt.setToolTipText(assetManager.z.getString(ROLE_NAMES[i]));
+				bt.setToolTipText(assets.getRoleName(i));
 				super.add(bt);
 				buildGroup0.add(roles[i] = bt,24,24);
 			}

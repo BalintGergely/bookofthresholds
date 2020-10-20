@@ -22,12 +22,14 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import javax.imageio.ImageIO;
 
+import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
 import net.balintgergely.util.JSON;
 import net.balintgergely.util.JSONBodySubscriber;
@@ -39,13 +41,17 @@ import net.balintgergely.util.JSONBodySubscriber;
 public class DataDragon {
 	public static final BodyHandler<String> STRING_BODY_HANDLER = BodyHandlers.ofString();
 	public static final BodyHandler<InputStream> STREAM_BODY_HANDLER = BodyHandlers.ofInputStream();
-	private static final String BASE_URI = "http://ddragon.leagueoflegends.com/cdn/";
+	public static final String LATEST_KNOWN_LOL_VERSION = "10.20.1";
+	private static final String BASE_URI = "https://ddragon.leagueoflegends.com/cdn/";
+	private static final String VERSION_URI = "https://ddragon.leagueoflegends.com/api/versions.json";
+	private static final String MANIFEST = "manifest.json";
+	private static final Pattern LOL_VERSIN = Pattern.compile("([0-9]+?)(\\.[0-9]+?)*");
 	private Map<String,Object> cache = new HashMap<>();
 	private Map<String,Object> data = new ConcurrentHashMap<>();
 	private HttpClient httpClient;
-	private String gameVersion;
+	private String versionOverride;
 	private File file;
-	public DataDragon(File cacheFile,HttpClient httpClient,String gameVersion){
+	public DataDragon(File cacheFile,HttpClient httpClient,String versionOverride){
 		this.file = cacheFile;
 		this.httpClient = httpClient;
 		if(cacheFile.exists()){
@@ -69,7 +75,7 @@ public class DataDragon {
 				th.printStackTrace();
 			}
 		}
-		this.gameVersion = gameVersion;
+		this.versionOverride = versionOverride;
 	}
 	/**
 	 * Creates a custom .txt file with the specified string content.
@@ -88,11 +94,11 @@ public class DataDragon {
 		}
 		try{
 			if(path.endsWith(".png")){
-				try(InputStream input = httpClient.send(httpRequest(path),STREAM_BODY_HANDLER).body()){
+				try(InputStream input = httpClient.send(httpRequest(BASE_URI+path),STREAM_BODY_HANDLER).body()){
 					return ImageIO.read(input);
 				}
 			}else if(path.endsWith(".json")){
-				return JSON.freeze(httpClient.send(httpRequest(path),JSONBodySubscriber.HANDLE_UTF8).body());
+				return JSON.freeze(httpClient.send(httpRequest(BASE_URI+path),JSONBodySubscriber.HANDLE_UTF8).body());
 			}else{
 				return null;
 			}
@@ -104,7 +110,7 @@ public class DataDragon {
 	}
 	private static HttpRequest httpRequest(String path){
 		try{
-			return HttpRequest.newBuilder().GET().uri(new URI(BASE_URI+path)).build();
+			return HttpRequest.newBuilder().GET().uri(new URI(path)).build();
 		}catch(URISyntaxException e){//Stupid.
 			throw new RuntimeException(e);
 		}
@@ -115,8 +121,67 @@ public class DataDragon {
 	public Object fetchObject(String path){
 		return data.computeIfAbsent(path, this::fetchInternal);
 	}
+	/**
+	 * Retrieves the current manifest. The manifest contains information
+	 * about which version to use of each subroute inside the data dragon.
+	 * Unless the version of lol to use has been overridden, this method attempts to fetch the latest
+	 * manifest.
+	 */
 	public JSMap getManifest(){
-		return JSON.asJSMap(fetchObject(gameVersion+"/manifest.json"));
+		return JSON.asJSMap(data.computeIfAbsent(MANIFEST, this::fetchManifestInternal));
+	}
+	private JSMap fetchManifestInternal(String pt){
+		if(httpClient == null){
+			throw new IllegalStateException();
+		}
+		Exception x = null;
+		Object mf = null;
+		trial: try{
+			String version;
+			if(versionOverride == null){//No overridden version. Thus we look for the latest.
+				JSList versionList = JSON.asJSList(httpClient.send(httpRequest(VERSION_URI), JSONBodySubscriber.HANDLE_UTF8).body());
+				version = LATEST_KNOWN_LOL_VERSION;
+				for(Object obj : versionList){
+					String str = JSON.asString(obj, true, null);
+					if(LOL_VERSIN.matcher(str).matches() && BookOfThresholds.compareVersion(version,str) < 0){
+						version = str;//Latest version.
+					}
+				}
+			}else{
+				version = versionOverride;
+				Object xmf = cache.get(MANIFEST);
+				if(xmf != null && version.equals(JSON.toJSMap(xmf).peekString("v"))){
+					mf = xmf;
+					break trial;//Found requested version in cache. Do not try to download it.
+				}
+			}
+			try{
+				mf = httpClient.send(httpRequest(BASE_URI+version+"/manifest.json"), JSONBodySubscriber.HANDLE_UTF8).body();
+			}catch(IOException e){
+				x = e;
+			}
+			if(mf == null && versionOverride != null){
+				JSList versionList = JSON.asJSList(httpClient.send(httpRequest(VERSION_URI), JSONBodySubscriber.HANDLE_UTF8).body());
+				version = versionOverride;
+				for(Object obj : versionList){
+					String str = JSON.asString(obj, true, null);
+					if(LOL_VERSIN.matcher(str).matches() && str.startsWith(versionOverride) && BookOfThresholds.compareVersion(version,str) < 0){
+						version = str;
+					}
+				}
+			}
+			mf = httpClient.send(httpRequest(BASE_URI+version+"/manifest.json"), JSONBodySubscriber.HANDLE_UTF8).body();
+		}catch(IOException | InterruptedException e){
+			mf = cache.get(MANIFEST);
+			if(x != null){
+				e.addSuppressed(x);
+			}
+			x = e;
+		}
+		if(!(mf instanceof JSMap || (mf = cache.get(MANIFEST)) instanceof JSMap)){
+			throw new RuntimeException(x);
+		}
+		return (JSMap)mf;
 	}
 	/**
 	 * Preloads a bunch of objects more efficiently.
@@ -126,7 +191,7 @@ public class DataDragon {
 		for(final String str : itr){
 			if(!(data.containsKey(str) || cache.containsKey(str) || dedup.containsKey(str))){
 				if(str.endsWith(".png")){
-					dedup.put(str,httpClient.sendAsync(httpRequest(str), STREAM_BODY_HANDLER).thenAccept((HttpResponse<InputStream> response) -> {
+					dedup.put(str,httpClient.sendAsync(httpRequest(BASE_URI+str), STREAM_BODY_HANDLER).thenAccept((HttpResponse<InputStream> response) -> {
 						try(InputStream input = response.body()){
 							BufferedImage img = ImageIO.read(input);
 							if(img == null){
@@ -139,7 +204,7 @@ public class DataDragon {
 						}
 					}).toCompletableFuture());
 				}else if(str.endsWith(".json")){
-					dedup.put(str,httpClient.sendAsync(httpRequest(str), JSONBodySubscriber.HANDLE_UTF8)
+					dedup.put(str,httpClient.sendAsync(httpRequest(BASE_URI+str), JSONBodySubscriber.HANDLE_UTF8)
 							.thenAccept((HttpResponse<Object> response) -> data.put(str, response.body())).toCompletableFuture());
 				}
 			}

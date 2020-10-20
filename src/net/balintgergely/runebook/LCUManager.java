@@ -3,11 +3,15 @@ package net.balintgergely.runebook;
 import java.awt.EventQueue;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
@@ -20,12 +24,15 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -40,6 +47,7 @@ import javax.swing.event.ChangeListener;
 import javax.swing.event.EventListenerList;
 
 import net.balintgergely.util.JSON;
+import net.balintgergely.util.JSON.PrettyWriter;
 import net.balintgergely.util.JSONBodySubscriber;
 
 public class LCUManager {
@@ -79,6 +87,7 @@ public class LCUManager {
 	 */
 	private static final Pattern	PASSWORD_PATTERN = Pattern.compile("--remoting-auth-token=(?<password>[^ \\\"]+)"),
 									PORT_PATTERN = Pattern.compile("--app-port=(?<port>\\d+)");
+	private static final CompletionStage<String> NULL_STRING_STAGE = CompletableFuture.completedStage(null);
 	public static final int STATE_NOT_KNOWN = 0,
 							STATE_NOT_RUNNING = 1,
 							STATE_CONNECTING = 2,
@@ -96,7 +105,37 @@ public class LCUManager {
 		public Throwable initCause(Throwable cause) {
 			return this;
 		}
-	};
+	};///lol-loadouts/v4/loadouts/scope/account
+	@SuppressWarnings("resource")
+	public static void main(String[] atgs) throws Throwable{
+		ProcessBuilder 
+		ppFetcher = new ProcessBuilder("WMIC", "process", "where", "name='LeagueClientUx.exe'", "get", "commandLine");
+		String address = InetAddress.getLoopbackAddress().getHostAddress();
+		String processData = new String(ppFetcher.start().getInputStream().readAllBytes(),StandardCharsets.UTF_8);
+		Matcher pwMatcher = PASSWORD_PATTERN.matcher(processData),
+				poMatcher = PORT_PATTERN.matcher(processData);
+		if(!(pwMatcher.find() && poMatcher.find())){
+			System.out.println("Couldn't find League");
+		}
+		String password = pwMatcher.group("password");
+		String port = poMatcher.group("port");
+		HttpClient httpClient = HttpClient.newBuilder().sslContext(LCUManager.makeContext()).build();
+		{//Code to test emotes.
+			String authString = "Basic "+Base64.getEncoder().encodeToString(("riot:"+password).getBytes());
+			HttpRequest.Builder builder = HttpRequest.newBuilder().header("Authorization", authString);
+			String base = "https://"+address+":"+port+"/";
+			System.out.println(base);
+			System.out.println("riot:"+password);//3159,3477
+			HttpResponse<Object> response = httpClient.send(builder.copy()
+					.uri(uri(base+"lol-loadouts/v4/loadouts/..."))
+					.method("PATCH", BodyPublishers.ofString(
+					"{\"loadout\":{\"EMOTES_ACE\":{\"contentId\":\"\",\"inventoryType\":\"EMOTE\",\"itemId\":3477}},\"name\":\"default\"}"
+					)).build(), JSONBodySubscriber.HANDLE_UTF8);
+			System.out.println(response.statusCode());
+			JSON.write(response.body(), new PrettyWriter(new OutputStreamWriter(System.out)));
+		}
+		
+	}
 	/**
 	 * Creates an SSLContext that supports both LCU among other normal certificates.
 	 */
@@ -135,50 +174,91 @@ public class LCUManager {
 	private final ProcessBuilder ppFetcher;
 	final HttpClient client;
 	private final String address;
-	private final WAMPManager wamp;
+	private WAMPManager wamp;
 	private volatile CompletableFuture<WebSocket> shortState;
 	volatile Function<String,HttpRequest.Builder> conref;
 	private volatile boolean manuallyClosed = false;
 	private Thread lcuSeekerThread = new Thread(this::seekerRun,"LCU-Seeker-Thread");
-	private Map<LCUDataRoute,Consumer<Object>> routeMap = new HashMap<>();
+	private Map<LCUDataRoute,BiConsumer<String,Object>> routeMap = new HashMap<>();
 	private Map<Class<? extends LCUModule>,LCUModule> modules = new HashMap<>();
-	private Consumer<Object> consumerForSummoner,consumerForChampionData;
+	private Consumer<Object> consumerForSummoner = a -> {},consumerForChampionData = a -> {};
 	{lcuSeekerThread.setDaemon(true);}
 	LCUManager(HttpClient client){
 		this.client = client;
 		address = InetAddress.getLoopbackAddress().getHostAddress();
 		String osName = System.getProperty("os.name");
 		String osLowerCase = osName.toLowerCase();
-		if(osLowerCase.contains("win")){
+		if(osLowerCase.contains("win")){//WMIC process where name='LeagueClientUx.exe' get commandLine
 			ppFetcher = new ProcessBuilder("WMIC", "process", "where", "name='LeagueClientUx.exe'", "get", "commandLine");
 		}else if(osLowerCase.contains("mac")){
 			ppFetcher = new ProcessBuilder("ps", "x", "|", "grep", "'LeagueClientUx.exe'");
 		}else{
 			throw new Error("Connecting to the League Client on "+osName+" is not supported.");
 		}
-		addModule(new LCUPerksManager(this));
-		LCUSummonerManager mgr = new LCUSummonerManager(this);
-		consumerForSummoner = mgr::updateCurrentSummoner;
-		consumerForChampionData = mgr::championsChanged;
-		addModule(mgr);
-		modules = Collections.unmodifiableMap(modules);
-		HashMap<String,Consumer<Object>> eventMap = new HashMap<>();
-		for(Map.Entry<LCUDataRoute, Consumer<Object>> entry : routeMap.entrySet()){
-			LCUDataRoute rt = entry.getKey();
-			if(rt.route.equals("lol-summoner/v1/current-summoner")){
-				consumerForSummoner = entry.getValue();
+		wamp = new WAMPManager(this::wampUpdate);
+	}
+	public <E extends LCUModule> E initModule(Constructor<E> cns,Object extra){
+		Class<E> cl = cns.getDeclaringClass();
+		@SuppressWarnings("unchecked")
+		E e = (E)modules.get(cl);
+		if(e == null){
+			if(wamp.isListenerMapSet()){
+				throw new IllegalStateException();
 			}
+			try {
+				e = cns.newInstance(this,extra);
+			}catch(InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e1) {
+				throw new RuntimeException(e1);
+			}
+			modules.put(cl, e);
+		}
+		return e;
+	}
+	public boolean isInitialized(){
+		return wamp.isListenerMapSet();
+	}
+	synchronized void finishInitialization(){
+		if(wamp.isListenerMapSet()){
+			throw new IllegalStateException();
+		}
+		LCUSummonerManager mgr = getModule(LCUSummonerManager.class);
+		if(mgr != null){
+			consumerForSummoner = mgr::updateCurrentSummoner;
+			consumerForChampionData = mgr::championsChanged;
+		}
+		modules = Collections.unmodifiableMap(modules);
+		for(LCUModule md : modules.values()){
+			routeMap.putAll(md.getDataRoutes());
+		}
+		Map<String,BiConsumer<String,Object>> eventMap = new HashMap<>();
+		for(Map.Entry<LCUDataRoute, BiConsumer<String,Object>> entry : routeMap.entrySet()){
+			LCUDataRoute rt = entry.getKey();
 			eventMap.put(rt.event, entry.getValue());
 		}
-		wamp = new WAMPManager(this::wampUpdate, eventMap);
+		wamp.setListenerMap(eventMap);
+		eventMap = null;
+		if(shortState != null && !shortState.isCompletedExceptionally()){
+			shortState = shortState
+				.thenCompose(webSocket ->
+					simpleGet("lol-champions/v1/owned-champions-minimal")
+					.thenAccept(consumerForChampionData)
+					.thenCompose(o -> simpleGet("lol-summoner/v1/current-summoner"))
+					.thenAccept(consumerForSummoner).thenCompose((a) -> fetchAllData())
+					.handle((a,t) -> {
+						if(t != null){
+							wamp.softAbort(webSocket);
+							t.printStackTrace();
+							throw new CancellationException();
+						}
+						return webSocket;
+					}
+				)
+			);
+		}
 	}
 	@SuppressWarnings("unchecked")
 	public <E extends LCUModule> E getModule(Class<E> type){
 		return (E)modules.get(type);
-	}
-	private void addModule(LCUModule md){
-		this.modules.put(md.getClass(), md);
-		this.routeMap.putAll(md.getDataRoutes());
 	}
 	private void seekerRun(){
 		while(true){
@@ -207,6 +287,9 @@ public class LCUManager {
 		}
 	}
 	public void startSeekerThread(){
+		if(!wamp.isListenerMapSet()){
+			throw new IllegalStateException();
+		}
 		lcuSeekerThread.start();
 	}
 	public <E> CompletableFuture<E> close(E response){
@@ -221,23 +304,35 @@ public class LCUManager {
 	private synchronized CompletableFuture<Void> fetchAllData(){
 		CompletableFuture<?>[] futures = new CompletableFuture<?>[routeMap.size()];
 		int index = 0;
-		for(Map.Entry<LCUDataRoute, Consumer<Object>> entry : routeMap.entrySet()){
+		for(Map.Entry<LCUDataRoute, BiConsumer<String,Object>> entry : routeMap.entrySet()){
 			LCUDataRoute route = entry.getKey();
-			Consumer<Object> recipient = entry.getValue();
+			BiConsumer<String,Object> recipient = entry.getValue();
 			if(route.mayNotExist){
 				futures[index++] = client.sendAsync(conref.apply(route.route).GET().build(), JSONBodySubscriber.HANDLE_UTF8)
 				.thenAccept((HttpResponse<Object> response) -> {
 					if(response.statusCode()/100 == 2){
-						recipient.accept(response.body());
+						recipient.accept(null,response.body());
 					}else{
-						recipient.accept(null);
+						recipient.accept(null,null);
 					}
 				});
 			}else{
-				futures[index++] = simpleGet(route.route).thenAccept(recipient);
+				futures[index++] = (CompletableFuture<?>)NULL_STRING_STAGE.thenAcceptBoth(simpleGet(route.route), recipient);
 			}
 		}
 		return CompletableFuture.allOf(futures);
+	}
+	public String fetchLocale(){
+		tryConnect();
+		if(conref != null){
+			try{
+				return client.sendAsync(conref.apply("riotclient/get_region_locale").GET().build(), JSONBodySubscriber.HANDLE_UTF8)
+				.thenApply(o -> JSON.toJSMap(bodyOf(o)).peekString("locale")).get();
+			}catch(Throwable t){
+				t.printStackTrace();
+			}
+		}
+		return null;
 	}
 	synchronized CompletableFuture<WebSocket> tryConnect(){
 		if(shortState != null){
@@ -257,13 +352,12 @@ public class LCUManager {
 			}
 			String password = pwMatcher.group("password");
 			String port = poMatcher.group("port");
+			String authString = "Basic "+Base64.getEncoder().encodeToString(("riot:"+password).getBytes());
 			{
-				String authString = "Basic "+Base64.getEncoder().encodeToString(("riot:"+password).getBytes());
 				HttpRequest.Builder builder = HttpRequest.newBuilder().header("Authorization", authString);
 				String base = "https://"+address+":"+port+"/";
 				conref = (String str) -> builder.copy().uri(uri(base+str));
 			}
-			String authString = "Basic "+Base64.getEncoder().encodeToString(("riot:"+password).getBytes());
 			shortState = simpleGet("lol-champions/v1/owned-champions-minimal")
 				.thenAccept(consumerForChampionData)
 				.thenCompose(o -> simpleGet("lol-summoner/v1/current-summoner"))
@@ -295,6 +389,7 @@ public class LCUManager {
 		if(shortState != stageToRefresh || (shortState != null && shortState.isCompletedExceptionally())){
 			return shortState;
 		}
+		Objects.requireNonNull(wamp);
 		return shortState = shortState.thenCompose(w -> wamp.subscribeAgain().thenCompose(o -> fetchAllData()).handle((k,t) -> {
 			if(t != null){
 				wamp.softAbort(w);
@@ -351,18 +446,6 @@ public class LCUManager {
 			return STATE_CONNECTING;
 		}
 	}
-	public String fetchLocale(){
-		tryConnect();
-		if(conref != null){
-			try{
-				return client.sendAsync(conref.apply("riotclient/get_region_locale").GET().build(), JSONBodySubscriber.HANDLE_UTF8)
-				.thenApply(o -> JSON.toJSMap(bodyOf(o)).peekString("locale")).get();
-			}catch(Throwable t){
-				t.printStackTrace();
-			}
-		}
-		return null;
-	}
 	public static class LCUDataRoute{
 		public final String route;
 		public final String event;
@@ -385,7 +468,7 @@ public class LCUManager {
 			return false;
 		}
 	}
-	public interface LCUModule{
-		public abstract Map<LCUDataRoute,Consumer<Object>> getDataRoutes();
+	interface LCUModule{
+		Map<LCUDataRoute,BiConsumer<String,Object>> getDataRoutes();
 	}
 }

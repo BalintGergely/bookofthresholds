@@ -4,7 +4,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Graphics;
 import java.awt.image.BufferedImage;
-import java.util.Comparator;
+import java.util.Arrays;
 
 import javax.imageio.ImageIO;
 import javax.swing.Icon;
@@ -16,14 +16,14 @@ import javax.swing.ListCellRenderer;
 
 import static net.balintgergely.runebook.LCUSummonerManager.*;
 
-public class MasteryIcon implements Icon,Comparator<Number>{
+public class MasteryIcon implements Icon{
 	public static void main(String[] atgs) throws Throwable{
 		MasteryIcon icon = new MasteryIcon(ImageIO.read(MasteryIcon.class.getResourceAsStream("icons.png")));
-		Integer[] array = new Integer[0x1000];
-		for(int i = 0;i < 0x1000;i++){
-			array[i] = i;
+		Byte[] array = new Byte[0x100];
+		for(int i = 0;i < 0x100;i++){
+			array[i] = (byte)i;
 		}
-		//Arrays.sort(array,icon);
+		Arrays.sort(array);
 		/*for(int a = 0;a < 0x1000;a++){
 			for(int b = 0;b < 0x1000;b++){
 				int resultA = icon.compare(array[a], array[b]);
@@ -45,14 +45,14 @@ public class MasteryIcon implements Icon,Comparator<Number>{
 				}
 			}
 		}*/
-		JFrame frame = new JFrame("Mastery Icon Test");
 		JLabel label = new JLabel(icon);
+		JFrame frame = new JFrame("Mastery Icon Test");
 		label.setOpaque(false);
-		JList<Integer> list = new JList<>(array);
+		JList<Byte> list = new JList<>(array);
 		list.setBackground(Color.BLACK);
 		list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
 		list.setVisibleRowCount(0);
-		list.setCellRenderer((ListCellRenderer<Integer>)(JList<? extends Integer> ls, Integer value, int index, boolean isSelected, boolean cellHasFocus) -> {
+		list.setCellRenderer((ListCellRenderer<Byte>)(JList<? extends Byte> ls, Byte value, int index, boolean isSelected, boolean cellHasFocus) -> {
 			icon.setStatusToDisplay(value);
 			return label;
 		});
@@ -66,35 +66,13 @@ public class MasteryIcon implements Icon,Comparator<Number>{
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.setVisible(true);
 	}
-	private BufferedImage white,locked,medal,unlocked,green,brown,red,purple,blue,button,ban,cpick,circle,hover;
+	private BufferedImage white,locked,medal,unlocked,green,brown,red,purple,blue,button,ban,/*cpick,*/circle,blueHover,redHover;
 	private int statusToDisplay;
 	public int getStatusToDisplay() {
 		return statusToDisplay;
 	}
 	public void setStatusToDisplay(int statusToDisplay) {
 		this.statusToDisplay = statusToDisplay;
-	}
-	@Override
-	public int compare(Number a,Number b){
-		int t1 = a.intValue(),t2 = b.intValue();
-		int m1 = (t1 & MASTERY_MASK),m2 = (t2 & MASTERY_MASK);
-		t1 ^= t2;
-		if((t1 & HOVERED) != 0){
-			return (t2 & HOVERED)-1;
-		}
-		if(m1 != m2){
-			return m2-m1;
-		}
-		if((t1 & KNOWN_OWNED) != 0){
-			return (t2 & KNOWN_OWNED)-1;
-		}
-		if((t2 & KNOWN_OWNED) == 0 && (t1 & FREE_ROTATION) != 0){
-			return (t2 & FREE_ROTATION)-1;
-		}
-		if((t1 & MASTERY_CHEST) != 0){
-			return (t2 & MASTERY_CHEST)-1;
-		}
-		return 0;
 	}
 	private static BufferedImage clip(BufferedImage img,int x,int y,int w,int h){
 		return img.getSubimage(96+x, y, w, h);
@@ -106,19 +84,20 @@ public class MasteryIcon implements Icon,Comparator<Number>{
 		unlocked =	clip(am,	0,	36,	12, 12);
 		green =		clip(am,	0,	48,	12, 12);
 		button =	clip(am,	14,	4,	4,	4 );
-		ban =		clip(am,	0,	84,	12,	12);
-		cpick =		clip(am,	12,	84,	12,	12);
+		ban =		clip(am,	0,	60,	12,	12);
+		//cpick =	clip(am,	12,	60,	12,	12);
 		brown =		clip(am,	20,	0,	52,	14);
 		red =		clip(am,	20,	14, 52, 14);
 		purple =	clip(am,	20,	28, 52, 14);
 		blue =		clip(am,	20,	42, 52, 14);
-		circle =	clip(am,	0,	60,	24,	24);
-		hover =		clip(am,	24,	60,	24,	24);
+		circle =	clip(am,	0,	72,	24,	24);
+		blueHover =	clip(am,	24,	72,	24,	24);
+		redHover =	clip(am,	48,	72, 24, 24);
 	}
 	@Override
 	public void paintIcon(Component c, Graphics g, int x, int y) {
 		BufferedImage ik;
-		int buttonCount = (statusToDisplay & MASTERY_MASK);
+		int buttonCount = (statusToDisplay & MASTERY_MASK) / MASTERY_OFFSET;
 		switch(buttonCount){
 		case 0:ik = null;break;
 		case 1:
@@ -136,34 +115,35 @@ public class MasteryIcon implements Icon,Comparator<Number>{
 		for(int k = 0;k < buttonCount;k++){
 			g.drawImage(button, x+26+k*10, y+10, null);
 		}
-		if((statusToDisplay & HOVERED) != 0){
-			g.drawImage(hover, x, y, null);
-		}else{
+		switch(statusToDisplay & MEDAL_MASK){
+		case MEDAL_NOT_OWNED:ik = locked;break;
+		case MEDAL_MASTERY:ik = medal;break;
+		case MEDAL_FREE:ik = unlocked;break;
+		case MEDAL_OWNED:ik = green;break;
+		default:ik = white;break;
+		}
+		if(ik != null){
+			g.drawImage(ik, x+6, y+6, null);
+		}
+		switch(statusToDisplay & STATUS_MASK){
+		case STATE_NONE:
 			g.drawImage(circle, x, y, null);
-		}
-		if((statusToDisplay & KNOWN_OWNED) != 0){
-			ik = green;
-		}else if((statusToDisplay & FREE_ROTATION) != 0){
-			ik = unlocked;
-		}else if((statusToDisplay & KNOWN_NOT_OWNED) != 0){
-			ik = locked;
-		}else if((statusToDisplay & MASTERY_CHEST) >= 5){
-			ik = medal;
-		}else{
-			ik = white;
-		}
-		g.drawImage(ik, x+6, y+6, null);
-		if(ik != locked){
-			if((statusToDisplay & BANNED) != 0){
-				g.drawImage(ban, x+6, y+6, null);
-			}else if((statusToDisplay & PICKED_BY_ENEMY) != 0){
-				g.drawImage(cpick, x+6, y+6, null);
-			}
+			break;
+		case STATE_ALLY:
+			g.drawImage(blueHover, x, y, null);
+			break;
+		case STATE_ENEMY:
+			g.drawImage(redHover, x, y, null);
+			break;
+		case STATE_BANNED:
+			g.drawImage(redHover, x, y, null);
+			g.drawImage(ban, x+6, y+6, null);
+			break;
 		}
 	}
 	@Override
 	public int getIconWidth() {
-		return 72;
+		return (statusToDisplay & MASTERY_MASK) == 0 ? 24 : 72;
 	}
 	@Override
 	public int getIconHeight() {

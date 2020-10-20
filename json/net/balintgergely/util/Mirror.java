@@ -3,8 +3,10 @@ package net.balintgergely.util;
 import java.util.AbstractMap;
 import java.util.AbstractSet;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
@@ -13,10 +15,17 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.Spliterator;
 import java.util.Spliterators;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
 
 public interface Mirror {
+	public static <E> DescendingIndexIterator<E> mirror(IndexIterator<E> itr){
+		return new DescendingIndexIterator<>(itr);
+	}
+	public static <E> IndexIterator<E> mirror(DescendingIndexIterator<E> itr){
+		return itr.itr;
+	}
 	public static <E> NavigableSet<E> mirror(NavigableSet<E> set){
 		if(set instanceof DescendingSet){
 			return set.descendingSet();
@@ -30,6 +39,75 @@ public interface Mirror {
 		}else{
 			return new DescendingMap<>(map);
 		}
+	}
+	public static final class DescendingIndexIterator<E> implements ListIterator<E>,Spliterator<E>{
+		public final IndexIterator<E> itr;
+		public DescendingIndexIterator(IndexIterator<E> itr) {
+			this.itr = itr;
+		}
+		@Override
+		public boolean tryAdvance(Consumer<? super E> action) {
+			return itr.tryAdvanceBackward(action);
+		}
+		@Override
+		public Spliterator<E> trySplit() {
+			return new DescendingIndexIterator<>(itr.trySplitBackward());
+		}
+		@Override
+		public long estimateSize() {
+			return itr.estimateSizeBackward();
+		}
+		@Override
+		public int characteristics() {
+			return itr.characteristics();
+		}
+		@Override
+		public boolean hasNext() {
+			return itr.hasPrevious();
+		}
+		@Override
+		public E next() {
+			return itr.previous();
+		}
+		@Override
+		public boolean hasPrevious() {
+			return itr.hasNext();
+		}
+		@Override
+		public E previous() {
+			return itr.next();
+		}
+		@Override
+		public int nextIndex() {
+			return itr.previousIndex();
+		}
+		@Override
+		public int previousIndex() {
+			return itr.nextIndex();
+		}
+		@Override
+		public void remove() {
+			itr.remove();
+		}
+		@Override
+		public void set(E e) {
+			itr.set(e);
+		}
+		@Override
+		public void add(E e) {
+			itr.add(e);
+		}
+		@Override
+		public void forEachRemaining(Consumer<? super E> action) {
+			while(hasNext()){
+				action.accept(next());
+			}
+		}
+		@Override
+		public Comparator<? super E> getComparator() {
+			return Collections.reverseOrder(itr.getComparator());
+		}
+		
 	}
 	public static final class DescendingSet<E> extends AbstractSet<E> implements NavigableSet<E>,Mirror{
 		public final NavigableSet<E> mirror;
