@@ -12,9 +12,11 @@ import java.util.Spliterator;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-public class SimpleOrdinalSet<E> extends SimpleIndexSet implements OrdinalSet<E>{
-	private OrdinalSet<E> universe;
-	public SimpleOrdinalSet(OrdinalSet<E> universe){
+import net.balintgergely.util.OrdinalSet.NavigableOrdinalSet;
+
+public class SimpleOrdinalSet<E> extends SimpleIndexSet implements NavigableOrdinalSet<E>{
+	private NavigableOrdinalSet<E> universe;
+	public SimpleOrdinalSet(NavigableOrdinalSet<E> universe){
 		super(universe.length());
 		this.universe = universe;
 	}
@@ -426,7 +428,7 @@ public class SimpleOrdinalSet<E> extends SimpleIndexSet implements OrdinalSet<E>
 		}
 	}
 	@Override
-	public OrdinalSet<E> universe() {
+	public NavigableOrdinalSet<E> universe() {
 		return universe.universe();
 	}
 	@Override
@@ -466,7 +468,7 @@ public class SimpleOrdinalSet<E> extends SimpleIndexSet implements OrdinalSet<E>
 		return a;
 	}
 	@Override
-	public OrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
+	public NavigableOrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
 		int a = universe.seek(fromElement, false, fromInclusive);
 		int b = universe.seek(toElement, true, toInclusive);
 		if(a > b || a < 0){
@@ -474,7 +476,7 @@ public class SimpleOrdinalSet<E> extends SimpleIndexSet implements OrdinalSet<E>
 		}
 		return new SubSet(a, b);
 	}
-	private class SubSet extends AbstractSet<E> implements OrdinalSet<E>{
+	private class SubSet extends AbstractSet<E> implements NavigableOrdinalSet<E>{
 		private int fromIndex,toIndex;//Both are inclusive;
 		private SubSet(int fromIndex,int toIndex){
 			this.fromIndex = fromIndex;
@@ -644,7 +646,7 @@ public class SimpleOrdinalSet<E> extends SimpleIndexSet implements OrdinalSet<E>
 			return index >= fromIndex && index <= toIndex ? index : -1;
 		}
 		@Override
-		public OrdinalSet<E> universe() {
+		public NavigableOrdinalSet<E> universe() {
 			return universe;
 		}
 		@Override
@@ -656,7 +658,7 @@ public class SimpleOrdinalSet<E> extends SimpleIndexSet implements OrdinalSet<E>
 			return toIndex-fromIndex+1;
 		}
 		@Override
-		public OrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
+		public NavigableOrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
 			int a = universe.seek(fromElement, false, fromInclusive);
 			if(a < fromIndex){
 				a = fromIndex;

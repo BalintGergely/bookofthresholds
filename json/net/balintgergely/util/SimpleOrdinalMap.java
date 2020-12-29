@@ -1,9 +1,6 @@
 package net.balintgergely.util;
 
-import java.util.AbstractCollection;
 import java.util.AbstractSet;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -11,7 +8,6 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.PrimitiveIterator;
-import java.util.PrimitiveIterator.OfInt;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.Spliterator;
@@ -20,40 +16,49 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
-import java.util.function.Predicate;
 
 import net.balintgergely.util.NavigableList.BinarySearchList;
+import net.balintgergely.util.OrdinalSet.NavigableOrdinalSet;
 
 public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
-	OrdinalSet<K> keySet;
-	ValueHolder values;
+	final NavigableOrdinalSet<K> keySet;
+	final OrdinalCollection<V> values;
 	@SuppressWarnings("unchecked")
-	public SimpleOrdinalMap(SortedMap<K,V> entries,Class<K> keyClass){
+	public static <K,V> OrdinalMap<K,V> copyOf(Map<K,V> entries,Comparator<? super K> comparator,Class<K> keyClass){
 		NavigableList<K> universe;
-		Comparator<? super K> comparator = entries.comparator();
 		if(keyClass == String.class && (comparator == null || comparator.equals(Comparator.naturalOrder()))){
 			universe = (NavigableList<K>)new NavigableList.StringList((Set<String>)entries.keySet());
 		}else{
 			universe = new BinarySearchList<>(entries.keySet(),comparator,keyClass);
 		}
-		this.keySet = new SimpleOrdinalSet<>(universe);
-		this.values = new ValueHolder();
-		values.data = (V[])new Object[keySet.length()];
-		for(int i = 0;i < values.data.length;i++){
-			values.data[i] = entries.get(universe.get(i));
+		V[] values = (V[])new Object[universe.size()];
+		for(int i = 0;i < values.length;i++){
+			values[i] = entries.get(universe.get(i));
+		}
+		return new SimpleOrdinalMap<>(universe, new ArrayListView<>(values));
+	}
+	public static <K,V> OrdinalMap<K,V> combine(NavigableOrdinalSet<K> keys,ArrayListView<V> values){
+		if(keys.isEmpty()){
+			throw new IllegalArgumentException();
+		}
+		int off = keys.offset();
+		if(keys.size() != values.size() || (off != 0 && ((ArrayListView.SubList<V>)values).offset != off)){
+			throw new IllegalArgumentException();
+		}
+		if(keys instanceof Immutable && values instanceof Immutable){
+			return new II<>(keys, values);
+		}else{
+			return new SimpleOrdinalMap<>(keys, values);
 		}
 	}
-	@SuppressWarnings("unchecked")
-	public SimpleOrdinalMap(OrdinalSet<K> keySet){
-		this.keySet = new SimpleOrdinalSet<>(keySet);
-		this.values = new ValueHolder();
-		values.data = (V[])new Object[keySet.length()];
-	}
-	private SimpleOrdinalMap(OrdinalSet<K> keySet,V[] data,int fromIndex){
+	SimpleOrdinalMap(NavigableOrdinalSet<K> keySet,OrdinalCollection<V> values){
 		this.keySet = keySet;
-		this.values = new ValueHolder();
-		values.data = data;
-		values.off = fromIndex;
+		this.values = values;
+	}
+	public SimpleOrdinalMap(NavigableOrdinalSet<K> keySet,Class<? super V> valueType){
+		SimpleOrdinalSet<K> subKeySet = new SimpleOrdinalSet<>(keySet);
+		this.keySet = subKeySet;
+		this.values = new SimpleOrdinalCollection<V>(subKeySet, valueType);
 	}
 	@Override
 	public Comparator<? super K> comparator() {
@@ -68,7 +73,7 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 		return keySet.last();
 	}
 	@Override
-	public OrdinalSet<K> keySet() {
+	public NavigableOrdinalSet<K> keySet() {
 		return keySet;
 	}
 	@Override
@@ -104,28 +109,29 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 	public V put(K key, V value) {
 		int index = keySet.indexOf(key);
 		if(index >= 0){
-			if(keySet.add(index)){
-				values.set(index, value);
-				return null;
-			}else{
-				return values.set(index, value);
-			}
+			return values.set(index, value);
 		}
 		throw new IllegalArgumentException();
 	}
 	@Override
+	public V putIfKey(K key, V value) {
+		int index = keySet.indexOf(key);
+		if(index >= 0){
+			return values.set(index, value);
+		}
+		return null;
+	}
+	@Override
 	public V remove(Object key) {
 		int index = keySet.indexOf(key);
-		if(index >= 0 && keySet.contains(index)){
-			keySet.remove(index);
-			return values.set(index, null);
+		if(index >= 0){
+			return values.remove(index);
 		}
 		return null;
 	}
 	@Override
 	public void clear() {
-		keySet.clear();
-		Arrays.fill(values.data, values.off, values.off+keySet.length(), null);
+		values.clear();
 	}
 	public Entry<K, V> seekEntry(K key,boolean lower,boolean inclusive){
 		int index = keySet.seek(key, lower, inclusive);
@@ -177,7 +183,7 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 	public Entry<K, V> pollFirstEntry() {
 		int index = keySet.firstIndex();
 		if(index >= 0){
-			keySet.remove(index);
+			values.remove(index);
 			return new MapEntry<>(keySet.get(index), values.set(index,null));
 		}
 		return null;
@@ -186,7 +192,7 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 	public Entry<K, V> pollLastEntry() {
 		int index = keySet.lastIndex();
 		if(index >= 0){
-			keySet.remove(index);
+			values.remove(index);
 			return new MapEntry<>(keySet.get(index), values.set(index,null));
 		}
 		return null;
@@ -201,11 +207,16 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 	}
 	@Override
 	public NavigableMap<K, V> subMap(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
-		OrdinalSet<K> subSet = keySet.subSet(fromKey, fromInclusive, toKey, toInclusive);
+		NavigableOrdinalSet<K> subSet = keySet.subSet(fromKey, fromInclusive, toKey, toInclusive);
 		if(subSet.length() == 0){
 			return Collections.emptyNavigableMap();
 		}
-		return new SimpleOrdinalMap<>(subSet, values.data, values.off+subSet.offset()-keySet.offset());
+		if(values instanceof SimpleOrdinalCollection){
+			return new SimpleOrdinalMap<K, V>(subSet,
+					new SimpleOrdinalCollection<V>((SimpleOrdinalCollection<V>)values,subSet,subSet.offset()-keySet.offset()));
+		}
+		int miniOff = subSet.offset()-keySet.offset();
+		return new SimpleOrdinalMap<>(subSet, ((OrdinalCollection.OrdinalList<V>)values).subList(miniOff, miniOff+subSet.length()));
 	}
 	@Override
 	public NavigableMap<K, V> headMap(K toKey, boolean inclusive) {
@@ -231,7 +242,7 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 	public void putAll(Map<? extends K, ? extends V> m) {
 		if(m instanceof OrdinalMap){
 			OrdinalMap<? extends K,? extends V> ordM = (OrdinalMap<? extends K,? extends V>)m;
-			OrdinalSet<? extends K> otherKeySet = ordM.keySet();
+			NavigableOrdinalSet<? extends K> otherKeySet = (NavigableOrdinalSet<? extends K>) ordM.keySet();
 			int myFirstIndex = keySet.offset();
 			int myLastIndex = myFirstIndex+keySet.length();
 			int otFirstIndex = otherKeySet.offset();
@@ -242,7 +253,6 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 					int ox = index-otFirstIndex;
 					if(ordM.contains(ox)){
 						int lx = index-myFirstIndex;
-						keySet.add(lx);
 						values.set(lx,ordM.values().get(ox));
 					}
 				}
@@ -296,8 +306,7 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 		if(index >= 0 && keySet.contains(index)){
 			V v = values.get(index);
 			if(value == null ? v == null : value.equals(v)){
-				keySet.remove(index);
-				values.set(index, null);
+				values.remove(index);
 				return true;
 			}
 		}
@@ -332,7 +341,6 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 			}else{
 				V v = mappingFunction.apply(key);
 				if(v != null){
-					keySet.add(index);
 					values.set(index, v);
 				}
 				return v;
@@ -347,9 +355,10 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 			V v = values.get(index);
 			V n = remappingFunction.apply(key, v);
 			if(n == null){
-				keySet.remove(index);
+				values.remove(index);
+			}else{
+				values.set(index, n);
 			}
-			values.set(index, n);
 			return n;
 		}
 		return null;
@@ -362,14 +371,14 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 				V v = values.get(index);
 				V n = remappingFunction.apply(key, v);
 				if(n == null){
-					keySet.remove(index);
+					values.remove(index);
+				}else{
+					values.set(index, n);
 				}
-				values.set(index, n);
 				return n;
 			}else{
 				V v = remappingFunction.apply(key, null);
 				if(v != null){
-					keySet.add(index);
 					values.set(index, v);
 				}
 				return v;
@@ -388,211 +397,16 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 				}
 				V n = remappingFunction.apply(v, value);
 				if(n == null){
-					keySet.remove(index);
+					values.remove(index);
+				}else{
+					values.set(index, n);
 				}
-				values.set(index, n);
 				return n;
 			}
-			keySet.add(index);
 			values.set(index, value);
 			return value;
 		}
 		throw new IllegalArgumentException();
-	}
-	private class ValueHolder extends AbstractCollection<V> implements OrdinalCollection<V>{
-		V[] data;
-		int off = 0;
-		@Override
-		public int size() {
-			return keySet.size();
-		}
-		@Override
-		public boolean isEmpty() {
-			return keySet.isEmpty();
-		}
-		@Override
-		public boolean contains(Object o) {
-			PrimitiveIterator.OfInt indices = keySet.indexIterator();
-			if(o == null){
-				while(indices.hasNext()){
-					if(data[off+indices.nextInt()] == null){
-						return true;
-					}
-				}
-			}else{
-				while(indices.hasNext()){
-					if(o.equals(data[off+indices.nextInt()])){
-						return true;
-					}
-				}
-			}
-			return false;
-		}
-		@Override
-		public Iterator<V> iterator() {
-			PrimitiveIterator.OfInt indices = keySet.indexIterator();
-			return new Iterator<V>() {
-				@Override
-				public boolean hasNext() {
-					return indices.hasNext();
-				}
-				@Override
-				public V next() {
-					return data[off+indices.nextInt()];
-				}
-			};
-		}
-		@Override
-		public Spliterator<V> spliterator() {
-			class ValueSpliterator implements Spliterator<V>,IntConsumer{
-				Spliterator.OfInt indices;
-				ValueSpliterator(Spliterator.OfInt in){
-					this.indices = in;
-				}
-				@Override
-				public void accept(int value) {
-					index = value;
-				}
-				int index;
-				@Override
-				public boolean tryAdvance(Consumer<? super V> action) {
-					if(indices.tryAdvance(this)){
-						action.accept(data[off+index]);
-						return true;
-					}
-					return false;
-				}
-				@Override
-				public Spliterator<V> trySplit() {
-					Spliterator.OfInt spl = indices.trySplit();
-					return spl == null ? null : new ValueSpliterator(spl);
-				}
-				@Override
-				public long estimateSize() {
-					return indices.estimateSize();
-				}
-				@Override
-				public int characteristics() {
-					return indices.characteristics() & (Spliterator.ORDERED | Spliterator.SIZED | Spliterator.SORTED | Spliterator.SUBSIZED);
-				}
-				@Override
-				public long getExactSizeIfKnown() {
-					return indices.getExactSizeIfKnown();
-				}
-			}
-			return new ValueSpliterator(keySet.indexSpliterator());
-		}
-		@Override
-		public boolean remove(Object o) {
-			PrimitiveIterator.OfInt indices = keySet.indexIterator();
-			if(o == null){
-				while(indices.hasNext()){
-					if(data[off+indices.nextInt()] == null){
-						indices.remove();
-						return true;
-					}
-				}
-			}else{
-				while(indices.hasNext()){
-					if(o.equals(data[off+indices.nextInt()])){
-						indices.remove();
-						return true;
-					}
-				}
-			}
-			return false;
-		}
-		@Override
-		public boolean removeAll(Collection<?> c) {
-			return removeImpl(c,true);
-		}
-		@Override
-		public boolean retainAll(Collection<?> c) {
-			return removeImpl(c,false);
-		}
-		private boolean removeImpl(Collection<?> c,boolean complement){
-			boolean mod = false;
-			PrimitiveIterator.OfInt indices = keySet.indexIterator();
-			while(indices.hasNext()){
-				if(c.contains(data[off+indices.nextInt()]) == complement){
-					indices.remove();
-					mod = true;
-				}
-			}
-			return mod;
-		}
-		@Override
-		public boolean removeIf(Predicate<? super V> p){
-			boolean mod = false;
-			PrimitiveIterator.OfInt indices = keySet.indexIterator();
-			while(indices.hasNext()){
-				if(p.test(data[off+indices.nextInt()])){
-					indices.remove();
-					mod = true;
-				}
-			}
-			return mod;
-		}
-		@Override
-		public void clear() {
-			SimpleOrdinalMap.this.clear();
-		}
-		@Override
-		public void forEach(Consumer<? super V> action) {
-			PrimitiveIterator.OfInt indices = keySet.indexIterator();
-			while(indices.hasNext()){
-				action.accept(data[off+indices.nextInt()]);
-			}
-		}
-		@Override
-		public V get(int index){
-			return data[off+index];
-		}
-		private V set(int index,V value){
-			index += off;
-			V v = data[index];
-			data[index] = value;
-			return v;
-		}
-		@Override
-		public OfInt indexIterator() {
-			return keySet.indexIterator();
-		}
-		@Override
-		public java.util.Spliterator.OfInt indexSpliterator() {
-			return keySet.indexSpliterator();
-		}
-		@Override
-		public int firstIndex() {
-			return keySet.firstIndex();
-		}
-		@Override
-		public int lastIndex() {
-			return keySet.lastIndex();
-		}
-		@Override
-		public boolean contains(int index) {
-			return keySet.contains(index);
-		}
-		@Override
-		public boolean add(int index) {
-			throw new UnsupportedOperationException();
-		}
-		@Override
-		public int length() {
-			return keySet.length();
-		}
-		@Override
-		public Object remove(int index) {
-			if(keySet.contains(index)){
-				keySet.remove(index);
-				index += off;
-				Object obj = data[index];
-				data[index] = null;
-				return obj;
-			}
-			return null;
-		}
 	}
 	@Override
 	public Set<Entry<K, V>> entrySet() {
@@ -607,7 +421,7 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 			}
 			@Override
 			public void clear() {
-				SimpleOrdinalMap.this.clear();
+				values.clear();
 			}
 			@Override
 			public Iterator<Entry<K, V>> iterator() {
@@ -626,7 +440,6 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 					@Override
 					public void remove() {
 						indices.remove();
-						values.set(index, null);
 					}
 				};
 			}
@@ -675,5 +488,19 @@ public class SimpleOrdinalMap<K,V> implements OrdinalMap<K,V>,NavigableMap<K,V>{
 				return new EntrySpliterator(keySet.indexSpliterator());
 			}
 		};
+	}
+	static class II<K,V> extends SimpleOrdinalMap<K,V> implements Immutable{
+		II(NavigableOrdinalSet<K> keys, ArrayListView<V> values) {
+			super(keys, values);
+		}
+		@Override
+		public NavigableMap<K, V> subMap(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
+			NavigableOrdinalSet<K> subSet = keySet.subSet(fromKey, fromInclusive, toKey, toInclusive);
+			if(subSet.length() == 0){
+				return Collections.emptyNavigableMap();
+			}
+			int miniOff = subSet.offset()-keySet.offset();
+			return new SimpleOrdinalMap<>(subSet, ((OrdinalCollection.OrdinalList<V>)values).subList(miniOff, miniOff+subSet.length()));
+		}
 	}
 }

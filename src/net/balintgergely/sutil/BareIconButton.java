@@ -7,6 +7,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Image;
 import java.awt.RenderingHints;
 
 import javax.swing.Icon;
@@ -37,6 +38,11 @@ public class BareIconButton extends JButton implements ListCellRenderer<Champion
 	public void setFont(Font font){
 		//Something, SOMETHING In Java Combo Box UI just grabs the cell renderer and tries to set the font. A cunning but futile attempt.
 		//Oh btw it also sets the background. Got to keep that in mind.
+	}
+	@Override
+	public boolean imageUpdate(Image img, int infoflags, int x, int y, int w, int h) {
+		repaint(0, 0, 0, getWidth(), getHeight());//Custom Renderer + Custom Icon + Dynamic Image Loading
+		return (infoflags & (ALLBITS|ABORT)) == 0;// = JButton won't repaint because it relies on at least some of these being JDK instances.
 	}
 	@Override
 	public Dimension getPreferredSize(){

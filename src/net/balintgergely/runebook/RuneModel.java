@@ -16,10 +16,10 @@ import net.balintgergely.util.JSON;
 
 public final class RuneModel extends ArrayListView<RuneModel.Path>{
 	private static final String STAT_MODS_ROUTE = "perk-images/StatMods/";
-	private static final int[][] STAT_MODEL = {
-			{5,3,4},
-			{5,1,2},
-			{0,1,2}
+	private static final int[][] STAT_MODEL = {//The model for statstones.
+			{5,3,4},//Offence: Adaptive, Attack Sepeed, Ability Haste.
+			{5,1,2},//Flex: Adaptive, Armor, Magic Resist
+			{0,1,2}//Defence: HP, Argomr, Magic Resist
 	};
 	public final int statModPermutations = 27;//3*3*3
 	public final long totalPermutationCount;
@@ -46,7 +46,7 @@ public final class RuneModel extends ArrayListView<RuneModel.Path>{
 				sts(1, "StatModsArmorIcon.png",			bundle.getString("statAr"),	5002, 1, 2, 1),
 				sts(2, "StatModsMagicResIcon.png",		bundle.getString("statMr"),	5003, 1, 2, 2),
 				sts(3, "StatModsAttackSpeedIcon.png",	bundle.getString("statAs"),	5005, 0, 0, 1),
-				sts(4, "StatModsCDRScalingIcon.png",	bundle.getString("statCd"),	5007, 0, 0, 2),
+				sts(4, "StatModsCDRScalingIcon.png",	bundle.getString("statAh"),	5007, 0, 0, 2),
 				sts(5, "StatModsAdaptiveForceIcon.png",	bundle.getString("statAf"),	5008, 0, 1, 0),
 		};
 		for(Statstone st : statStones){
@@ -109,6 +109,14 @@ public final class RuneModel extends ArrayListView<RuneModel.Path>{
 		@Override
 		public Object convert() {
 			return Integer.valueOf(id);
+		}
+		@Override
+		public int hashCode(){
+			return id;
+		}
+		@Override
+		public String toString(){
+			return name;
 		}
 	}
 	public static class Path extends Stone{

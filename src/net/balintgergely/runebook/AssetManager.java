@@ -1,22 +1,21 @@
 package net.balintgergely.runebook;
 
-import java.util.Arrays;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.concurrent.ExecutionException;
 import java.util.zip.CRC32;
 import java.util.Map.Entry;
-import java.util.ResourceBundle.Control;
 import java.util.function.Function;
 
 import javax.imageio.ImageIO;
 import javax.swing.Icon;
+
 
 import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
@@ -25,21 +24,26 @@ import java.awt.Component;
 import java.awt.EventQueue;
 import java.awt.Graphics;
 import java.awt.Image;
+import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
+import java.awt.image.CropImageFilter;
+import java.awt.image.FilteredImageSource;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
 import net.balintgergely.util.JSON;
+import net.balintgergely.util.SimpleOrdinalMap;
 import net.balintgergely.util.NavigableList;
+import net.balintgergely.util.NavigableList.StringList;
 import net.balintgergely.util.OrdinalMap;
+import net.balintgergely.util.ArrayListView;
+import net.balintgergely.runebook.Champion.Skin;
 import net.balintgergely.runebook.Champion.Variant;
+import net.balintgergely.runebook.DataDragon.DataDragonImageProducer;
 import net.balintgergely.runebook.RuneModel.*;
 import net.balintgergely.util.JSList;
 import net.balintgergely.util.JSMap;
-import net.balintgergely.util.ArrayListView;
-import net.balintgergely.util.ImmutableOrdinalMap;
-import net.balintgergely.util.OrdinalSet;
 
 class AssetManager{
 	public static final byte	TOP = 0x1,
@@ -50,6 +54,9 @@ class AssetManager{
 	public static final int PATH_SIZE = 32,KEYSTONE_SIZE = 48,RUNESTONE_SIZE = 32,STAT_MOD_SIZE = 24;
 	public static final Comparator<Number> KEY_COMPARATOR = (a,b) -> Long.compare(a.intValue(), b.intValue());
 	private static final String[] ROLE_NAMES = new String[]{"roleTop","roleMid","roleBot","roleJg","roleSp"};
+	public static final String getRoleKey(int role){
+		return ROLE_NAMES[role];
+	}
 	private final String kaynId;
 	private static void an(Object o){
 		if(o != null){
@@ -64,23 +71,196 @@ class AssetManager{
 	final OrdinalMap<String,Champion> championsById;
 	final OrdinalMap<Number,Champion> championsByKey;
 	final Map<String,Champion> championsByEnglishName;
-	final List<Champion> championsSortedByName;
 	final NavigableList<Champion> championList;
 	final Map<Champion,List<Variant>> championVariants;
-	final Map<RuneModel.Stone,Image> runeIcons;
+	final Map<Champion,List<Skin>> championSkins;
+	final Map<Stone,Image> runeIcons;
 	final Map<RuneModel.Stone,Color> runeColors;
 	final String listOfLocales;
-	final List<String> tagList;
+	final StringList listOfTags;
 	final int championCount;
-	BufferedImage shóma;
-	BufferedImage icons;
-	BufferedImage book;
-	BufferedImage runebase;
-	BufferedImage petricite;
-	PropertyResourceBundle z;
-	Locale locale;
+	final BufferedImage shóma;
+	final BufferedImage icons;
+	final BufferedImage book;
+	final BufferedImage runebase;
+	final BufferedImage petricite;
+	final PropertyResourceBundle z;
+	final Locale locale;
+	final ExportManager exportManager;
 	@SuppressWarnings("unchecked")
-	AssetManager(DataDragon dragon,String locale,boolean isCustomLocale) throws IOException{
+	AssetManager(DataDragon dragon,String locale,boolean isCustomLocale) throws IOException, InterruptedException, ExecutionException{
+		JSList localeData = JSON.toJSList(dragon.fetchObject(null,DataDragon.LANGUAGES).get());
+		JSMap manifest = dragon.getManifest();
+		if(locale == null){
+			locale = manifest.getString("l");
+		}else{
+			locale = dragon.setLocale(locale);
+		}
+		List<String> localeList = (List<String>)(List<?>)localeData.list;
+		{
+			StringBuilder bld = new StringBuilder(localeData.size()*6);
+			for(String str : localeList){
+				bld.append(str);
+				bld.append(',');
+			}
+			bld.setLength(bld.length()-1);
+			listOfLocales = bld.toString();
+		}
+		boolean isEnglish = locale.startsWith("en");
+		Locale l = null;
+		try{
+			l = Locale.forLanguageTag(locale.replace('_', '-'));
+		}catch(Exception e){
+			e.printStackTrace();
+			if(isEnglish){
+				l = Locale.ENGLISH;
+			}else if(l == null){
+				l = Locale.getDefault();
+			}
+		}
+		Locale.setDefault(l);
+		z = (PropertyResourceBundle) ResourceBundle.getBundle("locale",isEnglish ? Locale.ROOT : l);
+		JSMap championData = JSON.asJSMap(dragon.fetchObject("champion","data/"+locale+"/championFull.json").get(), true).getJSMap("data");
+		JSMap englishChampionData = isEnglish ? championData : 
+			JSON.asJSMap(dragon.fetchObject("champion","data/en_US/champion.json").get(), true).getJSMap("data");
+		JSList runeData = JSON.asJSList(dragon.fetchObject("rune","data/"+locale+"/runesReforged.json").get(), true);
+		this.locale = l;
+		JSList englishRuneData = isEnglish ? null : JSON.asJSList(dragon.fetchObject("rune","data/en_US/runesReforged.json").get(), true);
+		runeModel = new RuneModel(runeData, z);
+		//Additionally to a localized rune model, we need an english variant just for Mobafire insertion.
+		englishRuneModel = isEnglish ? runeModel : 
+			new RuneModel(englishRuneData, (PropertyResourceBundle) ResourceBundle.getBundle("locale",Locale.ROOT));
+		runeIcons = new HashMap<>();
+		runeColors = new HashMap<>();
+		Function<Stone,Image> imageFetcher = s -> dragon.fetchImage(null,"img/"+s.imageRoute);
+		Function<Stone,Color> colorFetcher = s -> ((DataDragonImageProducer)runeIcons.computeIfAbsent(s,imageFetcher).getSource()).averagePixels();
+		HashSet<DataDragonImageProducer> awaitSet = new HashSet<>();
+		for(Stone st : runeModel.stoneMap.values()){
+			if(st instanceof Path || st instanceof Statstone){
+				runeColors.computeIfAbsent(st,colorFetcher);
+			}else{
+				Image img = runeIcons.computeIfAbsent(st,imageFetcher);
+				if(((Runestone)st).slot == 0){
+					awaitSet.add(stw(img));
+				}
+				runeColors.put(st,runeColors.computeIfAbsent(((Runestone)st).path,colorFetcher));
+			}
+		}
+		for(Map.Entry<Stone,Image> entry : runeIcons.entrySet()){
+			Stone st = entry.getKey();
+			int scale;
+			if(st instanceof Path){
+				scale = PATH_SIZE;
+			}else if(st instanceof Runestone){
+				scale = ((Runestone)st).slot == 0 ? KEYSTONE_SIZE : RUNESTONE_SIZE;
+			}else{
+				scale = STAT_MOD_SIZE;
+			}
+			entry.setValue(entry.getValue().getScaledInstance(scale, scale, Image.SCALE_SMOOTH));
+		}
+		{//Kayn is hardcoded because the runes he uses depend on his passive fate which in turn depend on the draft.
+			//Id is their "internal name". Kayn gets two extra ids.
+			HashMap<String,Champion> champById = new HashMap<>();
+			//Key is a number unique to each champion and is used by the champion selection. Kayn has a single id like any other champion.
+			HashMap<Number,Champion> champByKey = new HashMap<>();
+			//A hash map of champions by their english name. Used by the mobafire parser.
+			HashMap<String,Champion> champByEng = new HashMap<>();
+			//A mapping of tag lists. Used to eliminate redundancy.
+			HashMap<Object,List<String>> tagListIndex = new HashMap<>();
+			championCount = championData.map.size();
+			Champion[] championArray = new Champion[championCount];
+			List<Skin>[] championSkinArray = (List<Skin>[]) new List<?>[championCount];
+			int index = 0;
+			Champion kayn = null;//Kayn.
+			Variant ass = null,slay = null;//Kayn's two forms.
+			for(Entry<String,Object> entry : championData.map.entrySet()){
+				String key = entry.getKey();
+				JSMap champion = JSON.asJSMap(entry.getValue(),true);
+				List<String> championTagList = (List<String>)(List<?>)champion.getJSList("tags").list;
+				switch(championTagList.size()){
+				case 0:
+					throw new IllegalStateException();
+				case 1:
+					championTagList = tagListIndex.computeIfAbsent(championTagList.get(0),
+							(Function<Object,List<String>>)(Function<?,?>)Collections::singletonList);
+					break;
+				default:
+					List<String> alt = tagListIndex.putIfAbsent(championTagList,championTagList);
+					if(alt == null){
+						for(String str : championTagList){
+							tagListIndex.computeIfAbsent(str,
+									(Function<Object,List<String>>)(Function<?,?>)Collections::singletonList);
+						}
+					}else{
+						championTagList = alt;
+					}
+				}
+				JSMap image = champion.getJSMap("image");
+				Number id = champion.getNumber("key");
+				Image img = dragon.fetchImage("champion","img/sprite/"+image.getString("sprite"));
+				Champion ch = new Champion(
+						key,
+						champion.getString("name"),
+						id,
+						(cropImage(img,
+								image.getInt("x"), image.getInt("y"), image.getInt("w"), image.getInt("h"))),
+						championTagList);
+				awaitSet.add(stw(img));
+				an(champByEng.put(englishChampionData.getJSMap(key).getString("name").toUpperCase(Locale.ROOT),ch));
+				if(key.equals("Kayn")){
+					kayn = ch;
+					ass = new Variant(ch,"ass",loadImageWithHash("kayn_ass_square.png",2624372905l));
+					slay = new Variant(ch,"slay",loadImageWithHash("kayn_slay_square.png",4243224101l));
+					an(champById.put("Kaynass",ass));
+					an(champById.put("Kaynslay",slay));
+				}else{
+					an(champById.put(key,ch));
+				}
+				JSList skins = champion.getJSList("skins");
+				Skin[] skinArray = new Skin[skins.size()];
+				for(int k = 0;k < skinArray.length;k++){
+					JSMap skinData = skins.getJSMap(k);
+					skinArray[k] = new Skin(ch,skinData.getString("name"),skinData.getInt("id"));
+				}
+				championSkinArray[index] = new ArrayListView<Skin>(skinArray);
+				champByKey.put(ch.key,ch);
+				championArray[index] = ch;
+				index++;
+			}
+			//Arrays.sort(championArray,Comparator.comparing(a -> a.key,KEY_COMPARATOR));
+			tagListIndex.keySet().removeIf(a -> a instanceof List);
+			listOfTags = new StringList((Collection<String>)(Collection<?>)tagListIndex.keySet());
+			//This will error if Kayn is not present in the champion database.
+			champById.put(kaynId = kayn.toString(),kayn);
+			championVariants = Map.of(kayn,List.of(ass,slay));
+			championList = new Champion.ChampionList(championArray);
+			championsByKey = SimpleOrdinalMap.copyOf(champByKey,KEY_COMPARATOR,Number.class);
+			championsById = SimpleOrdinalMap.copyOf(champById,null,String.class);
+			championsByEnglishName = Collections.unmodifiableMap(champByEng);
+			championSkins = SimpleOrdinalMap.combine(championList,new ArrayListView<>(championSkinArray));
+			//championsByTag = ImmutableOrdinalMap.of(champByTag,String.class);
+		}
+		icons = loadImageWithHash("icons.png",2358622739l);//Absolutely NO tampering please!
+		runebase = loadImageWithHash("runebase.png",4054446114l);
+		book = loadImageWithHash("book.png",1433901601l);
+		petricite = loadImageWithHash("petricite.jpg",1048823524l);
+		shóma = loadImageWithHash("shóma.jpg",4091669783l);
+		tintedIcons.put(Color.WHITE,icons);
+		for(DataDragonImageProducer i : awaitSet){
+			i.awaitCompletion();
+		}
+		exportManager = new ExportManager(this);
+	}
+	private static DataDragonImageProducer stw(Image img){
+		DataDragonImageProducer prod = (DataDragonImageProducer)img.getSource();
+		prod.startProduction(null);
+		return prod;
+	}
+	private static Image cropImage(Image image,int x,int y,int w,int h){
+		return Toolkit.getDefaultToolkit().createImage(new FilteredImageSource(image.getSource(), new CropImageFilter(x, y, w, h)));
+	}
+	/*@SuppressWarnings("unchecked")
+	AssetManager(DataDragon0 dragon,String locale,boolean isCustomLocale) throws IOException{
 		Locale l = null;
 		JSList localeData = JSON.asJSList(dragon.fetchObject("languages.json"), true);
 		if(locale == null){
@@ -141,7 +321,7 @@ class AssetManager{
 		}
 		Locale.setDefault(l);
 		z = (PropertyResourceBundle) ResourceBundle.getBundle("locale",isEnglish ? Locale.ROOT : l);
-		JSMap championData = JSON.asJSMap(dragon.fetchObject(n.getString("champion")+"/data/"+locale+"/champion.json"), true).getJSMap("data");
+		JSMap championData = JSON.asJSMap(dragon.fetchObject(n.getString("champion")+"/data/"+locale+"/championFull.json"), true).getJSMap("data");
 		JSMap englishChampionData = isEnglish ? championData : 
 			JSON.asJSMap(dragon.fetchObject(n.getString("champion")+"/data/"+en+"/champion.json"), true).getJSMap("data");
 		JSList runeData = JSON.asJSList(dragon.fetchObject(n.getString("rune")+"/data/"+locale+"/runesReforged.json"), true);
@@ -188,7 +368,7 @@ class AssetManager{
 			}
 			entry.setValue(entry.getValue().getScaledInstance(scale, scale, Image.SCALE_SMOOTH));
 		}
-		{//Kayn is hardcoded because his runes depend on his passive which in turn depends on the composition.
+		{//Kayn is hardcoded because the runes he uses depend on his passive fate which in turn depend on the draft.
 			//Id is their "internal name". Kayn gets two extra ids.
 			TreeMap<String,Champion> champById = new TreeMap<>();
 			//Key is a number unique to each champion and is used by the champion selection. Kayn has a single id like any other champion.
@@ -199,6 +379,7 @@ class AssetManager{
 			HashMap<Object,List<String>> tagListIndex = new HashMap<>();
 			championCount = championData.map.size();
 			Champion[] championArray = new Champion[championCount];
+			List<Skin>[] championSkinArray = (List<Skin>[]) new List<?>[championCount];
 			int index = 0;
 			Champion kayn = null;//Kayn.
 			Variant ass = null,slay = null;//Kayn's two forms.
@@ -208,26 +389,21 @@ class AssetManager{
 				List<String> championTagList = (List<String>)(List<?>)champion.getJSList("tags").list;
 				switch(championTagList.size()){
 				case 0:
-					championTagList = OrdinalSet.emptyList();
-					break;
+					throw new IllegalStateException();
 				case 1:
-					championTagList = tagListIndex.computeIfAbsent(championTagList.get(0),OrdinalSet.SingletonOrdinalSet::new);
+					championTagList = tagListIndex.computeIfAbsent(championTagList.get(0),
+							(Function<Object,List<String>>)(Function<?,?>)Collections::singletonList);
 					break;
 				default:
-					List<String> alt = tagListIndex.get(championTagList);
-					if(alt == null){//Should happen no more than n factorial where n is the length of the list. 2 in all currently known cases.
-						alt = new NavigableList.StringList(championTagList);
-						List<String> alt1 = tagListIndex.putIfAbsent(alt,alt);
-						if(alt1 == null){
-							for(String str : alt){
-								tagListIndex.computeIfAbsent(str,OrdinalSet.SingletonOrdinalSet::new);
-							}
-						}else{
-							alt = alt1;
+					List<String> alt = tagListIndex.putIfAbsent(championTagList,championTagList);
+					if(alt == null){
+						for(String str : championTagList){
+							tagListIndex.computeIfAbsent(str,
+									(Function<Object,List<String>>)(Function<?,?>)Collections::singletonList);
 						}
-						tagListIndex.putIfAbsent(championTagList,alt);
+					}else{
+						championTagList = alt;
 					}
-					championTagList = alt;
 				}
 				JSMap image = champion.getJSMap("image");
 				Number id = champion.getNumber("key");
@@ -248,32 +424,29 @@ class AssetManager{
 				}else{
 					an(champById.put(key,ch));
 				}
+				JSList skins = champion.getJSList("skins");
+				Skin[] skinArray = new Skin[skins.size()];
+				for(int k = 0;k < skinArray.length;k++){
+					JSMap skinData = skins.getJSMap(k);
+					skinArray[k] = new Skin(ch,skinData.getString("name"),skinData.getInt("id"));
+				}
+				championSkinArray[index] = new ArrayListView<Skin>(skinArray);
 				champByKey.put(ch.key,ch);
 				championArray[index] = ch;
 				index++;
 			}
-			ArrayList<String> localTagList = new ArrayList<>(7);
-			for(List<String> nls : tagListIndex.values()){
-				if(nls.size() == 1){
-					String tag = nls.get(0);
-					int d = Collections.binarySearch(localTagList,tag);
-					if(d < 0){
-						localTagList.add(-1-d,tag);
-					}
-				}
-			}
-			Champion[] nameSort = championArray.clone();
-			tagList = new NavigableList.StringList(localTagList);
-			Arrays.sort(championArray,Comparator.comparing(a -> a.key,KEY_COMPARATOR));
-			Arrays.sort(championArray,null);
+			//Arrays.sort(championArray,Comparator.comparing(a -> a.key,KEY_COMPARATOR));
+			tagListIndex.keySet().removeIf(a -> a instanceof List);
+			listOfTags = new StringList((Collection<String>)(Collection<?>)tagListIndex.keySet());
 			//This will error if Kayn is not present in the champion database.
 			champById.put(kaynId = kayn.toString(),kayn);
 			championVariants = Map.of(kayn,List.of(ass,slay));
 			championList = new Champion.ChampionList(championArray);
-			championsByKey = ImmutableOrdinalMap.of(champByKey,Number.class);
-			championsById = ImmutableOrdinalMap.of(champById,String.class);
+			championsByKey = SimpleOrdinalMap.copyOf(champByKey,Number.class);
+			championsById = SimpleOrdinalMap.copyOf(champById,String.class);
 			championsByEnglishName = Collections.unmodifiableMap(champByEng);
-			championsSortedByName = new ArrayListView<>(nameSort);
+			championSkins = SimpleOrdinalMap.combine(championList,new ArrayListView<>(championSkinArray));
+			//championsByTag = ImmutableOrdinalMap.of(champByTag,String.class);
 		}
 		icons = loadImageWithHash("icons.png",2358622739l);//Absolutely NO tampering please!
 		runebase = loadImageWithHash("runebase.png",4054446114l);
@@ -281,7 +454,7 @@ class AssetManager{
 		petricite = loadImageWithHash("petricite.jpg",1048823524l);
 		shóma = loadImageWithHash("shóma.jpg",4091669783l);
 		tintedIcons.put(Color.WHITE,icons);
-	}
+	}*/
 	public boolean hasSubChampions(Champion ch){
 		return ch.toString() == kaynId;
 	}
@@ -304,34 +477,6 @@ class AssetManager{
 	}
 	public Image image(int imgx,int imgy){
 		return icons.getSubimage(imgx*24, imgy*24, 24, 24);
-	}
-	public static Color averagePixels(BufferedImage img){
-		double redSum = 0,blueSum = 0,greenSum = 0,alphaSum = 0;
-		int w = img.getWidth(),h = img.getHeight();
-		for(int y = 0;y < h;y++){
-			for(int x = 0;x < w;x++){
-				int pix = img.getRGB(x, y);
-				double alpha = (pix >>> 24) & 0xff;
-				double red = (pix >>> 16) & 0xff;
-				double green = (pix >>> 8) & 0xff;
-				double blue = (pix) & 0xff;
-				redSum += red*alpha;
-				blueSum += blue*alpha;
-				greenSum += green*alpha;
-				alphaSum += alpha;
-			}
-		}
-		if(alphaSum == 0){
-			return new Color(0,true);
-		}else{
-			redSum /= alphaSum;
-			blueSum /= alphaSum;
-			greenSum /= alphaSum;
-			int red = redSum <= 0 ? 0 : (redSum >= 255 ? 255 : (int)Math.round(redSum));
-			int green = greenSum <= 0 ? 0 : (greenSum >= 255 ? 255 : (int)Math.round(greenSum));
-			int blue = blueSum <= 0 ? 0 : (blueSum >= 255 ? 255 : (int)Math.round(blueSum));
-			return new Color((red << 16) | (green << 8) | blue);
-		}
 	}
 	private HashMap<Color,BufferedImage> tintedIcons = new HashMap<>();
 	public class RoleIcon implements Icon{

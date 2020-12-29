@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
  * <li><code>available()</code> returns <code>buffer.remaining()</code>
  * <li><code>skip()</code> skips bytes using <code>buffer.position()</code>
  * <li><code>mark(int)</code> calls <code>buffer.mark()</code>
- * <li><code>reset()</code> calls <code>buffer.reset()</code>
+ * <li><code>reset()</code> calls <code>buffer.reset()</code><br>
  * Note that the single constructor of this class does not duplicate the internal buffer.
  * Every method call uses and updates the state of the buffer passed through the constructor.
  * @author balintgergely

@@ -209,8 +209,7 @@ public class LCUSummonerManager extends AbstractTableModel implements LCUModule{
 							}
 						}
 						if(sm0 != null){
-							int index1 = teamSize;
-							while(index1 < columnArray.length){
+							for(int index1 = teamSize;index1 < columnArray.length;index1++){
 								Summoner sm1 = columnArray[index1];
 								if(sm1 != mySummoner){
 									columnArray[index1] = sm0;

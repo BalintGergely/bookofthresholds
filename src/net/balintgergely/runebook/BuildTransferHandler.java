@@ -41,7 +41,7 @@ class BuildTransferHandler extends TransferHandler {
 				bld = tr.build;
 			}else if(t.isDataFlavorSupported(DataFlavor.stringFlavor)){
 				String str = (String)t.getTransferData(DataFlavor.stringFlavor);
-				bld = Mobafire.resolveBuild(bot.main.getAssetManager(), str);
+				bld = bot.main.getAssetManager().exportManager.resolveBuild(str);
 			}else{
 				return false;
 			}
@@ -174,7 +174,7 @@ class BuildTransferHandler extends TransferHandler {
 		@Override
 		public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {
 			if(flavor.equals(DataFlavor.stringFlavor)){
-				return Mobafire.toURL(build.getRune());
+				return ExportManager.toMobafireURL(build.getRune());
 			}
 			if(flavor.equals(DataFlavor.imageFlavor)){
 				return toImage();

@@ -3,6 +3,7 @@ package net.balintgergely.util;
 import java.io.EOFException;
 import java.io.FilterWriter;
 import java.io.IOException;
+import java.io.PushbackReader;
 import java.io.Reader;
 import java.io.Serializable;
 import java.io.StringReader;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.PrimitiveIterator;
+import java.util.RandomAccess;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -172,30 +174,72 @@ public final class JSON {
 			}
 			StringBuilder builder = new StringBuilder();
 			builder.append(c);
-			int v;
-			do{
-				v = input.read();
-				if(v < 0){
-					if(carrier == null){
-						break;
-					}
-					eofex();
-				}
-				if("+-0123456789.eE".indexOf(v) >= 0){
-					builder.append((char)v);
-				}else{
-					if(carrier != null && !Character.isWhitespace(v)){
-						carrier.flag = v;
-					}
-					break;
-				}
-			}while(true);
+			readNumberToken(input, builder, carrier);
 			try{
 				Number n = parseNumber(builder.toString());
 				return n;
 			}catch(NumberFormatException e){
 				throw new IOException(e);
 			}
+		}
+	}
+	private static void readNumberToken(Reader input,StringBuilder builder,JSON carrier) throws IOException{
+		if(carrier != null){
+			do{
+				int v = input.read();
+				if(v < 0){
+					eofex();
+				}
+				if("+-0123456789.eE".indexOf(v) >= 0){
+					builder.append((char)v);
+				}else{
+					if(!Character.isWhitespace(v)){
+						carrier.flag = v;
+					}
+					return;
+				}
+			}while(true);
+		}else if(input instanceof PushbackReader){
+			do{
+				int v = input.read();
+				if(v >= 0 && "+-0123456789.eE".indexOf(v) >= 0){
+					builder.append((char)v);
+				}else{
+					if(v >= 0){
+						((PushbackReader) input).unread(v);
+					}
+					return;
+				}
+			}while(true);
+		}else if(input.markSupported()){
+			input.mark(0x10);
+			int distance = 0;
+			do{
+				int v = input.read();
+				if(v >= 0 && "+-0123456789.eE".indexOf(v) >= 0){
+					builder.append((char)v);
+				}else{
+					if(v >= 0){
+						input.reset();
+						input.skip(distance);
+					}
+					return;
+				}
+				distance++;
+				if(distance == 0x10){
+					input.mark(0x10);
+					distance = 0;
+				}
+			}while(true);
+		}else{
+			do{
+				int v = input.read();
+				if(v >= 0 && "+-0123456789.eE".indexOf(v) >= 0){
+					builder.append((char)v);
+				}else{
+					return;
+				}
+			}while(true);
 		}
 	}
 	private static String readString(Reader input,char quote) throws IOException{
@@ -409,12 +453,10 @@ public final class JSON {
 		}else{
 			@SuppressWarnings("resource")
 			Commentator cmt = b instanceof Commentator ? (Commentator)b : null;
-			@SuppressWarnings("unchecked")
-			Map<String,Object> castMap = cmt == null ? null : (Map<String,Object>)map;
 			if(cmt == null){
 				b.append('{');
 			}else{
-				cmt.openAndComment('{',cmt.commentator.apply(castMap, null));
+				cmt.openAndComment('{',cmt.commentator.apply(map, null));
 			}
 			boolean f = false;
 			if(map instanceof OrdinalMap){
@@ -429,7 +471,7 @@ public final class JSON {
 						}
 						String key = (String)k;
 						if(cmt != null){
-							cmt.writeComment(cmt.commentator.apply(castMap, key));
+							cmt.writeComment(cmt.commentator.apply(map, key));
 						}
 						write(key,b);
 						b.append(':');
@@ -446,7 +488,7 @@ public final class JSON {
 						}
 						String key = (String)k;
 						if(cmt != null){
-							cmt.writeComment(cmt.commentator.apply(castMap, key));
+							cmt.writeComment(cmt.commentator.apply(map, key));
 						}
 						write(key,b);
 						b.append(':');
@@ -462,14 +504,40 @@ public final class JSON {
 		if(list == null){
 			b.append("null");
 		}else{
-			b.append('[');
-			boolean f = false;
-			for(Object obj : list){
-				if(f){
-					b.append(',');
+			if(list instanceof JSList){
+				list = ((JSList)list).list;
+			}
+			@SuppressWarnings("resource")
+			Commentator cmt = b instanceof Commentator ? (Commentator)b : null;
+			if(cmt == null){
+				b.append('[');
+			}else{
+				cmt.openAndComment('[',cmt.commentator.apply(list, null));
+			}
+			if(list instanceof RandomAccess && list instanceof List){
+				List<?> lst = (List<?>)list;
+				int len = lst.size();
+				for(int i = 0;i < len;i++){
+					if(i > 0){
+						b.append(',');
+					}
+					if(cmt != null){
+						cmt.writeComment(cmt.commentator.apply(list, i));
+					}
+					write(lst.get(i),b);
 				}
-				write(obj,b);
-				f = true;
+			}else{
+				int i = 0;
+				for(Object obj : list){
+					if(i > 0){
+						b.append(',');
+					}
+					if(cmt != null){
+						cmt.writeComment(cmt.commentator.apply(list, i));
+					}
+					write(obj,b);
+					i++;
+				}
 			}
 			b.append(']');
 		}
@@ -849,7 +917,7 @@ public final class JSON {
 			}
 			return a;
 		}
-		if(obj instanceof Iterable){
+		if(obj instanceof Iterable && !(obj instanceof JSList)){
 			JSList a = new JSList();
 			a.addAll((Iterable<?>)obj);
 			return a;
@@ -944,8 +1012,8 @@ public final class JSON {
 			values = Arrays.copyOf(values,b);
 			keys = Arrays.copyOf(keys,b);
 		}
-		return ImmutableOrdinalMap.combine(
-				new NavigableList.StringList(keys),
+		return SimpleOrdinalMap.combine(
+				new NavigableList.StringList(keys,null),
 				new Immutable.ImmutableList<>(values));
 	}
 	@SuppressWarnings("unchecked")
@@ -1288,8 +1356,8 @@ public final class JSON {
 	 * @author balintgergely
 	 */
 	public static class Commentator extends PrettyWriter{
-		protected BiFunction<? super Map<? super String,Object>,? super String,String> commentator;
-		public Commentator(Writer out,BiFunction<? super Map<? super String,Object>,? super String,String> cmt) {
+		protected BiFunction<Object,Object,String> commentator;
+		public Commentator(Writer out,BiFunction<Object,Object,String> cmt) {
 			super(out);
 			this.commentator = cmt;
 		}

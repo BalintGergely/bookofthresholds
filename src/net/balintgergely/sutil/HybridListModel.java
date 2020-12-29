@@ -237,7 +237,7 @@ public abstract class HybridListModel<E> extends AbstractListModel<E> implements
 	public void removeChangeListener(ChangeListener x) {
 		listenerList.remove(ChangeListener.class, x);
 	}
-    protected void fireValueChanged(int firstIndex, int lastIndex){
+	protected void fireValueChanged(int firstIndex, int lastIndex){
 		Object[] listeners = listenerList.getListenerList();
 		ListSelectionEvent e = null;
 		for(int i = listeners.length - 2; i >= 0; i -= 2){
@@ -248,9 +248,9 @@ public abstract class HybridListModel<E> extends AbstractListModel<E> implements
 				((ListSelectionListener)listeners[i+1]).valueChanged(e);
 			}
 		}
-    }
-    private ChangeEvent che;
-    protected void fireStateChanged(){
+	}
+	private ChangeEvent che;
+	protected void fireStateChanged(){
 		Object[] listeners = listenerList.getListenerList();
 		for(int i = listeners.length - 2; i >= 0; i -= 2){
 			if(listeners[i] == ChangeListener.class){

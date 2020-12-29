@@ -8,6 +8,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.image.BufferedImage;
+import java.awt.image.ImageObserver;
 
 import javax.swing.Icon;
 
@@ -42,11 +43,11 @@ public class BuildIcon implements Icon{
 		boolean gridVariant = ((bld.getFlags() & 0x1F) != 0) || (bld.getChampion() != null);
 		BufferedImage image = new BufferedImage(gridVariant ? G_WIDTH : F_WIDTH, gridVariant ? G_HEIGHT : F_HEIGHT, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D gr = image.createGraphics();
-		renderBuild(mgr, bld, gridVariant, gr, 0, 0);
+		renderBuild(mgr, bld, gridVariant, gr, 0, 0, null);
 		gr.dispose();
 		return image;
 	}
-	private static void renderBuild(AssetManager mgr,Build build,boolean gridVariant,Graphics gr,int x,int y){
+	private static void renderBuild(AssetManager mgr,Build build,boolean gridVariant,Graphics gr,int x,int y,ImageObserver io){
 		if(build == null){
 			return;
 		}
@@ -55,7 +56,7 @@ public class BuildIcon implements Icon{
 		Rune rune = build.getRune();
 		int ox = x,oy = y;
 		if(gridVariant){
-			gr.drawImage(mgr.runebase, x, y, null);
+			gr.drawImage(mgr.runebase, x, y, null, io);
 			y += 12;
 			Champion champion = build.getChampion();
 			byte roles = build.getFlags();
@@ -67,8 +68,8 @@ public class BuildIcon implements Icon{
 			}
 			mgr.paintRoleIcon(gr, roles, Color.WHITE, x+48, y);
 		}else{
-			gr.drawImage(mgr.runebase, x+40, y, x+159, y+11, 0, 00, 119, 11, null);
-			gr.drawImage(mgr.runebase, x+40, y+12, x+159, y+41, 0, 60, 119, 89, null);
+			gr.drawImage(mgr.runebase, x+40, y, x+159, y+11, 0, 00, 119, 11, io);
+			gr.drawImage(mgr.runebase, x+40, y+12, x+159, y+41, 0, 60, 119, 89, io);
 		}
 		if(rune != null){
 			boolean lockFlag = (build.getFlags() & 0x40) != 0;
@@ -79,26 +80,26 @@ public class BuildIcon implements Icon{
 				if(keystone == null){
 					if(rune.primaryPath != null){
 						gr.fillOval(x+12, y+24, 24, 24);
-						gr.drawImage(mgr.runeIcons.get(rune.primaryPath), x+12, y+24, 24, 24, null);
+						gr.drawImage(mgr.runeIcons.get(rune.primaryPath), x+12, y+24, 24, 24, io);
 					}
 				}else{
-					gr.drawImage(mgr.runeIcons.get(keystone), x, y, 48, 48, null);
+					gr.drawImage(mgr.runeIcons.get(keystone), x, y, 48, 48, io);
 				}
 				if(rune.secondaryPath != null){
-					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+48, y+24, 24, 24, null);
+					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+48, y+24, 24, 24, io);
 				}
 				x += 24;
 				y += 51;
 			}else{
 				if(keystone == null){
 					if(rune.primaryPath != null){
-						gr.drawImage(mgr.runeIcons.get(rune.primaryPath), x, y, 32, 32, null);
+						gr.drawImage(mgr.runeIcons.get(rune.primaryPath), x, y, 32, 32, io);
 					}
 				}else{
-					gr.drawImage(mgr.runeIcons.get(keystone), x-4, y-4, 48, 48, null);
+					gr.drawImage(mgr.runeIcons.get(keystone), x-4, y-4, 48, 48, io);
 				}
 				if(rune.secondaryPath != null){
-					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+20, y+16, 24, 24, null);
+					gr.drawImage(mgr.runeIcons.get(rune.secondaryPath), x+20, y+16, 24, 24, io);
 				}
 				x += 64;
 				y += 15;
@@ -188,7 +189,7 @@ public class BuildIcon implements Icon{
 	}
 	@Override
 	public void paintIcon(Component c, Graphics gr, int x, int y) {
-		renderBuild(assetManager, build, gridVariant, gr, x, y);
+		renderBuild(assetManager, build, gridVariant, gr, x, y, c);
 	}
 	@Override
 	public int getIconWidth() {

@@ -127,7 +127,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		mainGroup.add(buildGroup0);
 		//mainGroup.add(buildGroup1);
 		{
-			championBox = new JComboBox<>(new ListComboBoxModel<>(assets.championsSortedByName));
+			championBox = new JComboBox<>(new ListComboBoxModel<>(assets.championList));
 			//championBox.setOpaque(false);
 			championBox.setSelectedItem(null);
 			championBox.setRenderer(new BareIconButton(null,Color.BLACK));
@@ -312,6 +312,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 		private Color color = Color.WHITE;
 		RuneButton(RuneButtonModel model,byte type){
 			super();
+			super.setDoubleBuffered(false);
 			super.setModel(model);
 			super.setOpaque(false);
 			super.setRolloverEnabled(true);
@@ -373,6 +374,11 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 			return new Dimension(size,size);
 		}
 		@Override
+		public boolean imageUpdate(Image img, int infoflags, int x, int y, int w, int h) {
+			repaint(0, 0, 0, getWidth(), getHeight());//AbstractButton really should know better than to ignore notifications from images other than the set icon.
+			return (infoflags & (ALLBITS|ABORT)) == 0;
+		}
+		@Override
 		public void paint(Graphics graphics){
 			Graphics2D gr = (Graphics2D)graphics;
 			if(stone != null){
@@ -395,7 +401,7 @@ public class LargeBuildPanel extends JPanel implements MouseListener,FocusListen
 						gr.drawOval(coffset, coffset, 33, 33);
 					}
 				}
-				gr.drawImage(image, offset, offset, null);
+				gr.drawImage(image, offset, offset, this);
 			}
 		}
 		@Override

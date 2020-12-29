@@ -20,6 +20,10 @@ public class SimpleIndexSet implements IndexSet,Cloneable{
 		words = new long[(length+0x3F)/0x40];
 		this.length = length;
 	}
+	public SimpleIndexSet(SimpleIndexSet other,boolean reflect){
+		this.words = reflect ? other.words : other.words.clone();
+		this.length = other.length;
+	}
 	@Override
 	public int firstIndex() {
 		int index = 0;
@@ -39,6 +43,40 @@ public class SimpleIndexSet implements IndexSet,Cloneable{
 			index--;
 			long value = words[index];
 			if(value != 0){
+				return index*0x40+Long.numberOfTrailingZeros(Long.highestOneBit(value));
+			}
+		}while(index > 0);
+		return -1;
+	}
+	//@Override
+	public int firstUnsetIndex() {
+		int index = 0;
+		do{
+			long value = words[index];
+			if(value != WORD_MASK){
+				index = index*0x40+Long.numberOfTrailingZeros(value);
+				return index >= length ? -1 : index;
+			}
+			index++;
+		}while(index < words.length);
+		return -1;
+	}
+	//@Override
+	public int lastUnsetIndex() {
+		int index = words.length;
+		long lastWordMask = WORD_MASK << length;
+		if(lastWordMask != WORD_MASK){
+			lastWordMask = ~lastWordMask;
+			index--;
+			long value = words[index];
+			if(value != lastWordMask){
+				return index*0x40+Long.numberOfTrailingZeros(Long.highestOneBit(value ^ lastWordMask));
+			}
+		}
+		do{
+			index--;
+			long value = words[index];
+			if(value != (~0)){
 				return index*0x40+Long.numberOfTrailingZeros(Long.highestOneBit(value));
 			}
 		}while(index > 0);
@@ -291,5 +329,9 @@ public class SimpleIndexSet implements IndexSet,Cloneable{
 		SimpleIndexSet copy = (SimpleIndexSet)super.clone();
 		copy.words = words.clone();
 		return copy;
+	}
+	@Override
+	public void clear() {
+		Arrays.fill(words, 0l);
 	}
 }

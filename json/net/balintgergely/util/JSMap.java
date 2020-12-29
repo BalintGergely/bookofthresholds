@@ -5,7 +5,6 @@ import static net.balintgergely.util.JSON.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -15,7 +14,7 @@ import java.util.Objects;
  * @author Bálint János Gergely
  */
 public final class JSMap{
-	public static final JSMap EMPTY_MAP = new JSMap(Collections.emptyNavigableMap());
+	public static final JSMap EMPTY_MAP = new JSMap(OrdinalMap.emptyMap());
 	public final Map<String,Object> map;
 	public JSMap() {
 		map = new HashMap<String, Object>();

@@ -6,7 +6,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.List;
 import java.util.ListIterator;
 import java.util.NavigableSet;
 import java.util.Spliterator;
@@ -14,13 +13,15 @@ import java.util.PrimitiveIterator.OfInt;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+
+import net.balintgergely.util.OrdinalSet.NavigableOrdinalSet;
 /**
- * A basic universe implmentation for OrdinalSet. NavigableList is an immutable ordered, sorted collection of distinct elements.
+ * A basic universe implmentation for NavigableOrdinalSet. NavigableList is an immutable ordered, sorted collection of distinct elements.
  * It's universe is itself.
  * @author balintgergely
  */
 @SuppressWarnings("unchecked")
-public abstract class NavigableList<E> extends ArrayListView<E> implements OrdinalSet<E>{
+public abstract class NavigableList<E> extends ArrayListView<E> implements NavigableOrdinalSet<E>{
 	protected NavigableList(E... vals){
 		super(vals);
 	}
@@ -94,7 +95,7 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 		return new IndexIterator.OfArray.Sorted<>(data, 0, 0, data.length,Spliterator.IMMUTABLE,comparator());
 	}
 	@Override
-	public OrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
+	public NavigableOrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
 		int a = fromElement == null ? 0 : seek(fromElement, false, fromInclusive);
 		int b = toElement == null ? data.length-1 : seek(toElement, true, toInclusive);
 		if(a > b){
@@ -103,20 +104,20 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 		return new SubList(a, b-a+1);
 	}
 	@Override
-	public List<E> subList(int fromIndex, int toIndex) {
+	public OrdinalList<E> subList(int fromIndex, int toIndex) {
 		if(fromIndex < 0 || toIndex < fromIndex || toIndex > data.length){
 			throw new IllegalArgumentException();
 		}
 		if(fromIndex == toIndex){
-			return (List<E>)OrdinalSet.emptySet();
+			return OrdinalSet.emptyList();
 		}
 		return new SubList(fromIndex, toIndex);
 	}
 	@Override
-	public OrdinalSet<E> universe(){
+	public NavigableOrdinalSet<E> universe(){
 		return this;
 	}
-	private class SubList extends AbstractSet<E> implements OrdinalSet<E>,List<E>{
+	private class SubList extends AbstractSet<E> implements NavigableOrdinalSet<E>,OrdinalList<E>{
 		private final int offset,length;
 		private SubList(int offset,int length){
 			this.offset = offset;
@@ -289,7 +290,7 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 			return indexOf(o);
 		}
 		@Override
-		public OrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
+		public NavigableOrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
 			int a = fromElement == null ? 0 : NavigableList.this.seek(fromElement, false, fromInclusive);
 			int b = toElement == null ? data.length-1 : NavigableList.this.seek(toElement, true, toInclusive);
 			int max = offset+length-1;
@@ -302,17 +303,17 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 			if(a > b){
 				return OrdinalSet.emptySet();
 			}
-			return (OrdinalSet<E>)NavigableList.this.subList(a, b+1);
+			return (NavigableOrdinalSet<E>)NavigableList.this.subList(a, b+1);
 		}
 		@Override
-		public List<E> subList(int fromIndex, int toIndex) {
+		public OrdinalList<E> subList(int fromIndex, int toIndex) {
 			if(fromIndex < 0 || toIndex < fromIndex || toIndex > length){
 				throw new IllegalArgumentException();
 			}
 			return NavigableList.this.subList(offset+fromIndex, offset+toIndex-fromIndex);
 		}
 		@Override
-		public OrdinalSet<E> universe() {
+		public NavigableOrdinalSet<E> universe() {
 			return NavigableList.this;
 		}
 		@Override
@@ -325,13 +326,13 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 			list.super(offset,length);
 		}
 	}
+	private static final Comparator<Object> I_AM_ERROR = (a,b) -> {throw new IllegalArgumentException();};
+	private static final Comparator<?> NATURAL_ERROR = Comparator.naturalOrder().thenComparing(I_AM_ERROR);
 	/**
 	 * A NavigableList determining indexes by performing binary search on the list of elements.
 	 * @author balintgergely
 	 */
 	public static class BinarySearchList<E> extends NavigableList<E>{
-		private static final Comparator<Object> I_AM_ERROR = (a,b) -> {throw new IllegalArgumentException();};
-		private static final Comparator<?> NATURAL_ERROR = Comparator.naturalOrder().thenComparing(I_AM_ERROR);
 		private final Comparator<? super E> comparator;
 		public BinarySearchList(Collection<E> col,Comparator<? super E> comp,Class<E> clazz){
 			super(Immutable.toArray(col,clazz));
@@ -345,7 +346,7 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 		}
 		public BinarySearchList(E[] data,Comparator<E> comparator){
 			super(data);
-			this.comparator = comparator;
+			this.comparator = comparator == null ? (Comparator<E>)Comparator.naturalOrder() : comparator;
 		}
 		private BinarySearchList(E[] data){
 			super(data);
@@ -406,11 +407,15 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 		public StringList(Collection<String> col){
 			super(col,null,String.class);
 		}
-		StringList(String[] str){
+		public StringList(String... str){
+			super(str.clone());
+			Arrays.sort(data,(Comparator<String>)NATURAL_ERROR);
+		}
+		StringList(String[] str,Void vr){
 			super(str);
 		}
 		@Override
-		public OrdinalSet<String> subSet(String fromElement, boolean fromInclusive, String toElement, boolean toInclusive) {
+		public NavigableOrdinalSet<String> subSet(String fromElement, boolean fromInclusive, String toElement, boolean toInclusive) {
 			int a = fromElement == null ? 0 : seek(fromElement, false, fromInclusive);
 			int b = toElement == null ? data.length-1 : seek(toElement, true, toInclusive);
 			if(a > b){
@@ -419,12 +424,12 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 			return new SubListImmutable<>(this, a, b-a+1);
 		}
 		@Override
-		public List<String> subList(int fromIndex, int toIndex) {
+		public OrdinalList<String> subList(int fromIndex, int toIndex) {
 			if(fromIndex < 0 || toIndex < fromIndex || toIndex > data.length){
 				throw new IllegalArgumentException();
 			}
 			if(fromIndex == toIndex){
-				return (List<String>)(List<?>)OrdinalSet.emptySet();
+				return OrdinalSet.emptyList();
 			}
 			return new SubListImmutable<>(this,fromIndex, toIndex);
 		}
@@ -461,7 +466,7 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 			return data.getClass().getComponentType().isInstance(o) ? ((Enum<?>)o).ordinal() : -1;
 		}
 		@Override
-		public OrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
+		public NavigableOrdinalSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
 			int a = fromElement == null ? 0 : seek(fromElement, false, fromInclusive);
 			int b = toElement == null ? data.length-1 : seek(toElement, true, toInclusive);
 			if(a > b){
@@ -470,12 +475,12 @@ public abstract class NavigableList<E> extends ArrayListView<E> implements Ordin
 			return new SubListImmutable<>(this, a, b-a+1);
 		}
 		@Override
-		public List<E> subList(int fromIndex, int toIndex) {
+		public OrdinalList<E> subList(int fromIndex, int toIndex) {
 			if(fromIndex < 0 || toIndex < fromIndex || toIndex > data.length){
 				throw new IllegalArgumentException();
 			}
 			if(fromIndex == toIndex){
-				return (List<E>)(List<?>)OrdinalSet.emptySet();
+				return OrdinalSet.emptyList();
 			}
 			return new SubListImmutable<>(this,fromIndex, toIndex);
 		}

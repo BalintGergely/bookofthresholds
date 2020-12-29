@@ -1,9 +1,12 @@
 package net.balintgergely.runebook;
 
 import java.awt.EventQueue;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
@@ -11,8 +14,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -48,6 +51,7 @@ import javax.swing.event.EventListenerList;
 
 import net.balintgergely.util.JSON;
 import net.balintgergely.util.JSON.PrettyWriter;
+import net.balintgergely.util.JSONBodyPublishing;
 import net.balintgergely.util.JSONBodySubscriber;
 
 public class LCUManager {
@@ -120,21 +124,76 @@ public class LCUManager {
 		String password = pwMatcher.group("password");
 		String port = poMatcher.group("port");
 		HttpClient httpClient = HttpClient.newBuilder().sslContext(LCUManager.makeContext()).build();
-		{//Code to test emotes.
+		Function<String,HttpRequest.Builder> conref;
+		{
 			String authString = "Basic "+Base64.getEncoder().encodeToString(("riot:"+password).getBytes());
 			HttpRequest.Builder builder = HttpRequest.newBuilder().header("Authorization", authString);
 			String base = "https://"+address+":"+port+"/";
+			conref = (String str) -> builder.copy().uri(uri(base+str));
 			System.out.println(base);
 			System.out.println("riot:"+password);//3159,3477
-			HttpResponse<Object> response = httpClient.send(builder.copy()
-					.uri(uri(base+"lol-loadouts/v4/loadouts/..."))
-					.method("PATCH", BodyPublishers.ofString(
-					"{\"loadout\":{\"EMOTES_ACE\":{\"contentId\":\"\",\"inventoryType\":\"EMOTE\",\"itemId\":3477}},\"name\":\"default\"}"
-					)).build(), JSONBodySubscriber.HANDLE_UTF8);
-			System.out.println(response.statusCode());
-			JSON.write(response.body(), new PrettyWriter(new OutputStreamWriter(System.out)));
+		}// lol-game-data/assets/v1/summoner-emotes.json XXX THIS IS IT!!!!!!
+		//To get chroma names use this: GET /lol-store/v1/catalog
+		//PrettyWriter outputWriter = new PrettyWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8));
+		PrettyWriter outputWriter = new PrettyWriter(new FileWriter("lcu.output"));
+		try(BufferedReader inputReader = new BufferedReader(new InputStreamReader(System.in,StandardCharsets.UTF_8))){
+			String call;
+			main: while((call = inputReader.readLine()) != null){
+				if(!call.isBlank()){
+					String[] pair = call.split(" ",2);
+					if(pair.length < 2){
+						switch(call.toLowerCase()){
+						case "end":break main;
+						}
+					}else{
+						pair[0] = pair[0].toUpperCase();
+						if(pair[1].startsWith("/")){
+							pair[1] = pair[1].substring(1);
+						}
+						HttpRequest.Builder builder = conref.apply(pair[1]);
+						switch(pair[0]){
+						case "GET":builder.GET();break;
+						case "DELETE":builder.DELETE();break;
+						default:System.out.println("Body:");
+							builder.method(pair[0],JSONBodyPublishing.publish(JSON.readObject(inputReader)));break;
+						}
+						HttpResponse<InputStream> response = httpClient.send(builder.build(),BodyHandlers.ofInputStream());
+						System.out.println("Status code: "+response.statusCode());
+						try(InputStreamReader input = new InputStreamReader(response.body(), StandardCharsets.UTF_8)){
+							input.transferTo(outputWriter);
+						}
+						outputWriter.flush();
+						System.out.println();
+					}
+				}
+			}
+			
 		}
-		
+		/*{//Code to test emotes.
+			HttpResponse<Object> response = 
+		httpClient.send(builder.copy().uri(uri(base+"lol-summoner/v1/current-summoner")).GET().build(), JSONBodySubscriber.HANDLE_UTF8);
+			System.out.println(response.statusCode());
+			PrettyWriter writer = new PrettyWriter(new OutputStreamWriter(System.out));
+			JSON.write(response.body(), writer);
+			writer.flush();
+		}*/
+	}
+	public static Function<String,HttpRequest.Builder> independentConref() throws IOException{
+		ProcessBuilder 
+		ppFetcher = new ProcessBuilder("WMIC", "process", "where", "name='LeagueClientUx.exe'", "get", "commandLine");
+		String address = InetAddress.getLoopbackAddress().getHostAddress();
+		String processData = new String(ppFetcher.start().getInputStream().readAllBytes(),StandardCharsets.UTF_8);
+		Matcher pwMatcher = PASSWORD_PATTERN.matcher(processData),
+				poMatcher = PORT_PATTERN.matcher(processData);
+		if(!(pwMatcher.find() && poMatcher.find())){
+			System.out.println("Couldn't find League");
+		}
+		String password = pwMatcher.group("password");
+		String port = poMatcher.group("port");
+		String authString = "Basic "+Base64.getEncoder().encodeToString(("riot:"+password).getBytes());
+		HttpRequest.Builder builder = HttpRequest.newBuilder().header("Authorization", authString);
+		String base = "https://"+address+":"+port+"/";
+		return (String str) -> builder.copy().uri(uri(base+str));
 	}
 	/**
 	 * Creates an SSLContext that supports both LCU among other normal certificates.

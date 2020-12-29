@@ -3,9 +3,7 @@ package net.balintgergely.util;
 import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 
 interface Immutable{
 	@SuppressWarnings("unchecked")
@@ -26,7 +24,7 @@ interface Immutable{
 			super(data);
 		}
 		@Override
-		public List<E> subList(int fromIndex, int toIndex) {
+		public OrdinalList<E> subList(int fromIndex, int toIndex) {
 			if(fromIndex < 0 || toIndex < 0 || fromIndex > toIndex || toIndex > data.length){
 				throw new IndexOutOfBoundsException();
 			}
@@ -34,7 +32,7 @@ interface Immutable{
 				return this;
 			}
 			if(fromIndex == toIndex){
-				return Collections.emptyList();
+				return OrdinalSet.emptyList();
 			}
 			return new ImmutableSubList<>(data, fromIndex, toIndex-fromIndex);
 		}
@@ -44,7 +42,7 @@ interface Immutable{
 			super(data,offset,length);
 		}
 		@Override
-		public List<E> subList(int fromIndex, int toIndex) {
+		public OrdinalList<E> subList(int fromIndex, int toIndex) {
 			if(fromIndex < 0 || toIndex < 0 || fromIndex > toIndex || toIndex > length){
 				throw new IndexOutOfBoundsException();
 			}
@@ -52,7 +50,7 @@ interface Immutable{
 				return this;
 			}
 			if(fromIndex == toIndex){
-				return Collections.emptyList();
+				return OrdinalSet.emptyList();
 			}
 			return fromIndex == 0 && toIndex == length ? this : new ImmutableSubList<>(data, offset+fromIndex, fromIndex-toIndex);
 		}

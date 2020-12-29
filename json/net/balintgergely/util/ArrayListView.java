@@ -164,7 +164,7 @@ public class ArrayListView<E> extends AbstractCollection<E> implements OrdinalLi
 		return new IndexIterator.OfArray<>(data,0,index,data.length,Spliterator.IMMUTABLE);
 	}
 	@Override
-	public List<E> subList(int fromIndex, int toIndex) {
+	public OrdinalList<E> subList(int fromIndex, int toIndex) {
 		if(fromIndex < 0 || toIndex < 0 || fromIndex > toIndex || toIndex > data.length){
 			throw new IndexOutOfBoundsException();
 		}
@@ -172,7 +172,7 @@ public class ArrayListView<E> extends AbstractCollection<E> implements OrdinalLi
 			return this;
 		}
 		if(fromIndex == toIndex){
-			return List.of();
+			return OrdinalSet.emptyList();
 		}
 		return new SubList<>(data, fromIndex, toIndex-fromIndex);
 	}
@@ -340,7 +340,7 @@ public class ArrayListView<E> extends AbstractCollection<E> implements OrdinalLi
 			return false;
 		}
 		@Override
-		public List<E> subList(int fromIndex, int toIndex) {
+		public OrdinalList<E> subList(int fromIndex, int toIndex) {
 			if(fromIndex < 0 || toIndex < 0 || fromIndex > toIndex || toIndex > length){
 				throw new IndexOutOfBoundsException();
 			}
@@ -348,7 +348,7 @@ public class ArrayListView<E> extends AbstractCollection<E> implements OrdinalLi
 				return this;
 			}
 			if(fromIndex == toIndex){
-				return List.of();
+				return OrdinalSet.emptyList();
 			}
 			return fromIndex == 0 && toIndex == length ? this : new SubList<>(data, offset+fromIndex, fromIndex-toIndex);
 		}

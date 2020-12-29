@@ -6,13 +6,12 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
 public final class JSList implements Iterable<Object>{
-	public static final JSList EMPTY_LIST = new JSList(Collections.emptyList());
+	public static final JSList EMPTY_LIST = new JSList(OrdinalSet.emptyList());
 	public final List<Object> list;
 	public JSList(){
 		list = new ArrayList<Object>();

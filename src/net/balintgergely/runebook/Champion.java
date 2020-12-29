@@ -2,7 +2,7 @@ package net.balintgergely.runebook;
 
 import java.awt.Component;
 import java.awt.Graphics;
-import java.awt.image.BufferedImage;
+import java.awt.Image;
 import java.util.Comparator;
 import java.util.List;
 
@@ -14,10 +14,10 @@ public class Champion implements Icon,Comparable<Champion>{
 	private final String id;
 	public final Number key;
 	public final List<String> tags;
-	private BufferedImage image;
+	private Image image;
 	private String name;
 	private int index = -1;
-	Champion(String id,String name,Number key,BufferedImage image,List<String> tags){
+	Champion(String id,String name,Number key,Image image,List<String> tags){
 		this.id = id;
 		this.key = key;
 		this.image = image;
@@ -70,9 +70,9 @@ public class Champion implements Icon,Comparable<Champion>{
 		}
 		return false;
 	}
-	public static class Variant extends Champion{
+	public static class Variant extends Champion{//Right now only Kayn has a variant: Rhaast & Shadow Assassin
 		public final Champion superChampion;
-		Variant(Champion other,String formId,BufferedImage image){
+		Variant(Champion other,String formId,Image image){
 			super(other.id+formId,other.name,other.key,image,other.tags);
 			this.superChampion = other;
 		}
@@ -83,6 +83,29 @@ public class Champion implements Icon,Comparable<Champion>{
 		@Override
 		public boolean equals(Object that){
 			return superChampion.equals(that);
+		}
+	}
+	public static class Skin{
+		public final Champion champion;
+		public final int id;
+		public final String name;
+		Skin(Champion champion,String name,int id){
+			this.champion = champion;
+			if(name.equals("default")){
+				this.name = champion.name;
+			}else{
+				int index = name.indexOf('(');
+				if(index >= 0){
+					this.name = "<html><body>"+name.substring(0,index)+"<br>"+name.substring(index)+"</html></body>";
+				}else{
+					this.name = name;
+				}
+			}
+			this.id = id;
+		}
+		@Override
+		public String toString(){
+			return name;
 		}
 	}
 	public static class ChampionList extends NavigableList<Champion> implements Comparator<Champion>{

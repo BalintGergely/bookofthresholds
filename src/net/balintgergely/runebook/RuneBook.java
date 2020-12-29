@@ -194,7 +194,7 @@ public class RuneBook extends BookOfThresholds.Module{
 				JToolBar mainViewToolBar = new JToolBar();
 				mainViewToolBar.setFloatable(false);
 				mainPanel.add(mainViewToolBar, con, 0);
-				championSorterBox = new JComboBox<>(new ListComboBoxModel<>(assets.championsSortedByName));
+				championSorterBox = new JComboBox<>(new ListComboBoxModel<>(assets.championList));
 				//championBox.setOpaque(false);
 				championSorterBox.setSelectedItem(null);
 				championSorterBox.setRenderer(new BareIconButton(null,Color.BLACK));

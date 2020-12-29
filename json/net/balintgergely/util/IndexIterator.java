@@ -1,6 +1,7 @@
 package net.balintgergely.util;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.ListIterator;
 import java.util.NoSuchElementException;
 import java.util.PrimitiveIterator;
@@ -207,6 +208,32 @@ public abstract class IndexIterator<E> implements ListIterator<E>,Spliterator<E>
 		@Override
 		public E previous() {
 			return function.apply(previousInt());
+		}
+		public static class Sorted<E> extends OfFunction<E>{
+			protected Comparator<? super E> comparator;
+			public Sorted(IntFunction<E> function, int fromIndex, int index0, int toIndex, int characteristics, Comparator<? super E> comparator) {
+				super(function, fromIndex, index0, toIndex, characteristics | Spliterator.SORTED);
+				this.comparator = comparator;
+			}
+			@Override
+			public Comparator<? super E> getComparator() {
+				return comparator;
+			}
+		}
+	}
+	public static class OfList<E> extends IndexIterator<E>{
+		protected List<E> function;
+		public OfList(List<E> fn,int fromIndex, int index0, int toIndex, int characteristics) {
+			super(fromIndex, index0, toIndex, characteristics);
+			this.function = fn;
+		}
+		@Override
+		public E next() {
+			return function.get(nextInt());
+		}
+		@Override
+		public E previous() {
+			return function.get(previousInt());
 		}
 		public static class Sorted<E> extends OfFunction<E>{
 			protected Comparator<? super E> comparator;

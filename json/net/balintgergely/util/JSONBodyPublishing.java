@@ -23,11 +23,11 @@ public class JSONBodyPublishing implements Subscription{
 		}catch(IOException e){
 			throw new UncheckedIOException(e);
 		}
-		int totalCapacity = 0;
+		long totalLength = 0;
 		for(ByteBuffer buffer : list){
-			totalCapacity += buffer.remaining();
+			totalLength += buffer.remaining();
 		}
-		return BodyPublishers.fromPublisher(s -> s.onSubscribe(new JSONBodyPublishing(list.iterator(), s)),totalCapacity);
+		return BodyPublishers.fromPublisher(s -> s.onSubscribe(new JSONBodyPublishing(list.iterator(), s)),totalLength);
 	}
 	private Iterator<ByteBuffer> itr;
 	private Subscriber<? super ByteBuffer> sb;

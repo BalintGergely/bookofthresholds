@@ -33,21 +33,21 @@ public final class Rune extends ArrayListView<Stone>{
 		this.secondaryPath = secondary;
 		this.isComplete = isComplete;
 	}
-	public static Rune ofStones(RuneModel model,Path primaryPath,Path secondaryPath,Collection<Stone> stoneCollection){
+	public static Rune ofStones(RuneModel model,Path primaryPath,Path secondaryPath,Collection<?> stoneCollection){
 		int inPrimary = 0,inSecondary = 0;
 		int count = 0;
 		boolean primaryPathFound = false,secondaryPathFound = false;
 		boolean pathLocked = primaryPath != null || secondaryPath != null;
 		Stone[] stoneArray = new Stone[stoneCollection.size()];
-		for(Stone stone : stoneCollection){
+		for(Object stone : stoneCollection){
 			if(stone instanceof Runestone){
-				stoneArray[count++] = stone;
 				Runestone rst = (Runestone)stone;
+				stoneArray[count++] = rst;
 				Path pt = rst.path;
 				if(model == null){
 					model = pt.model;
 				}else if(model != pt.model){
-					throw new IllegalArgumentException("Model mismatch!");
+					throw new RuneException("Model mismatch!",rst,pt);
 				}
 				if(pt == primaryPath){
 					inPrimary++;
@@ -60,12 +60,16 @@ public final class Rune extends ArrayListView<Stone>{
 					secondaryPath = pt;
 					inSecondary = 1;
 				}else{
-					throw new IllegalArgumentException("Third path not allowed!");
+					if(primaryPathFound || secondaryPathFound){
+						throw new RuneException("Third path not allowed!",primaryPath,secondaryPath);
+					}else{
+						throw new RuneException("Third path not allowed!",stoneArray[0],primaryPath);
+					}
 				}
 				if(rst.slot == 0){
 					if(pt == secondaryPath){
 						if(pathLocked){
-							throw new IllegalArgumentException("Secondary path can not have a keystone!");
+							throw new RuneException("Secondary path can not have a keystone!",stoneArray[0],pt);
 						}
 						secondaryPath = primaryPath;
 						primaryPath = pt;
@@ -80,23 +84,23 @@ public final class Rune extends ArrayListView<Stone>{
 					pathLocked = true;//pt == primaryPath and it should stay that way.
 				}
 			}else if(stone instanceof Statstone){
-				stoneArray[count++] = stone;
 				RuneModel lm = ((Statstone)stone).model;
+				stoneArray[count++] = (Stone)stone;
 				if(model == null){
 					model = lm;
 				}else if(model != lm){
-					throw new IllegalArgumentException("Model mismatch!");
+					throw new RuneException("Model mismatch!",((Stone)stone),null);
 				}
 			}else if(stone instanceof Path){
 				Path pt = (Path)stone;
 				if(pt == primaryPath){
 					if(primaryPathFound){
-						throw new IllegalArgumentException("Duplicate stone: "+pt.key);
+						throw new RuneException("Duplicate stone: "+pt.key,pt,pt);
 					}
 					primaryPathFound = true;
 				}else if(pt == secondaryPath){
 					if(secondaryPathFound){
-						throw new IllegalArgumentException("Duplicate stone: "+pt.key);
+						throw new RuneException("Duplicate stone: "+pt.key,pt,pt);
 					}
 					secondaryPathFound = true;
 				}else if(primaryPath == null){
@@ -106,10 +110,10 @@ public final class Rune extends ArrayListView<Stone>{
 					secondaryPath = pt;
 					secondaryPathFound = true;
 				}else{
-					throw new IllegalArgumentException("Three paths not supported!");
+					throw new RuneException("Three paths not supported!",pt,pt);
 				}
 			}else{
-				throw new IllegalArgumentException("Unsupported stone type!");
+				throw new RuneException("Unsupported stone type!",null,null);
 			}
 		}
 		if(model == null){
@@ -129,10 +133,20 @@ public final class Rune extends ArrayListView<Stone>{
 			inSecondary = k;
 		}
 		if(inSecondary > 2){
-			throw new IllegalArgumentException("Can not have more than 2 stones in secondary path!");
+			Stone alpha = null,bravo = null;
+			for(Stone st : stoneArray){
+				if(st instanceof Runestone && ((Runestone)st).path == secondaryPath){
+					if(alpha == null){
+						alpha = st;
+					}else{
+						bravo = st;
+					}
+				}
+			}
+			throw new RuneException("Can not have more than 2 stones in secondary path!",alpha,bravo);
 		}
 		if((secondaryPath != null && model != secondaryPath.model) || (primaryPath != null && model != primaryPath.model)){
-			throw new IllegalArgumentException("Model mismatch!");
+			throw new RuneException("Model mismatch!",primaryPath,secondaryPath);
 		}
 		int statSlotCount = model.getStatSlotCount();
 		Rune rn = new Rune(model, primaryPath, secondaryPath, stoneArray,
@@ -145,7 +159,7 @@ primaryPath != null && inPrimary == primaryPath.getSlotCount() && inSecondary ==
 			if(stone.minSlot > statSlot){
 				statSlot = stone.minSlot;
 			}else if(statSlot > stone.maxSlot){
-				throw new IllegalArgumentException("Illegal stat stone config!");
+				throw new RuneException("Illegal stat stone config!",stoneArray[inPrimary+inSecondary],stone);
 			}
 			statSlot++;
 		}
@@ -459,7 +473,7 @@ primaryPath != null && inPrimary == primaryPath.getSlotCount() && inSecondary ==
 					switch(Integer.compare(s1.slot, s2.slot)){
 					case -1:return -1;
 					case 1:return 1;
-					case 0:throw new IllegalArgumentException("Slot conflict!");//We are bound to find one of these if they exist.
+					case 0:throw new RuneException("Slot conflict!",s1,s2);//We are bound to find one of these if they exist.
 					}
 				}else{
 					return s1.path == primaryPath ? -1 : 1;
@@ -486,5 +500,13 @@ primaryPath != null && inPrimary == primaryPath.getSlotCount() && inSecondary ==
 		}
 		return 0;
 	}
-	
+	public static class RuneException extends RuntimeException{
+		private static final long serialVersionUID = 1L;
+		public final Stone stoneA,stoneB;
+		public RuneException(String message,Stone stoneA,Stone stoneB) {
+			super(message);
+			this.stoneA = stoneA;
+			this.stoneB = stoneB;
+		}
+	}
 }

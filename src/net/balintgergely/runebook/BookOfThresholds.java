@@ -16,8 +16,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 
@@ -76,7 +78,7 @@ public class BookOfThresholds{
 	}
 	private static final File SAVE_FILE = new File("runeBook.json"),TEMP_SAVE_FILE = new File("runeBook.json.temp");
 	static final String GITHUB = "https://balintgergely.github.io/bookofthresholds";
-	static final String VERSION = "7.0.0";
+	static final String VERSION = "8.0.0";
 	public static void main(String[] atgs) throws Throwable{xxxxx:{//Breaking this block = System.exit(1);
 		try{
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -139,12 +141,6 @@ public class BookOfThresholds{
 			main.getDataDragon();
 			System.out.println("Fetching Runeterran dictionary...");
 			main.initSubsystems();
-			System.out.println("Securing Cloud to Earth...");
-			if(main.dataDragon.finish()){
-				System.out.println("File updated.");
-			}else{
-				System.out.println("File not updated.");
-			}
 			System.out.println("Using Data Dragon version "+main.dataDragon.getManifest().getString("v"));
 		}catch(Throwable t){
 			t.printStackTrace();
@@ -176,7 +172,11 @@ public class BookOfThresholds{
 	private DataDragon dataDragon;
 	DataDragon getDataDragon(){
 		if(dataDragon == null){
-			dataDragon = new DataDragon(new File("dataDragon.zip"), httpClient, dataMap.peekString("lolVersion"));
+			try{
+				dataDragon = new DataDragon(new File("dataDragon.zip"), httpClient, executor, dataMap.peekString("lolVersion"));
+			}catch(IOException e){
+				throw new UncheckedIOException(e);
+			}
 		}
 		return dataDragon;
 	}
@@ -205,12 +205,16 @@ public class BookOfThresholds{
 				if(type == LCUSummonerManager.class){
 					return lcuManager.initModule(type.getDeclaredConstructor(LCUManager.class,AssetManager.class), getAssetManager());
 				}
+				if(type == CosmeticManager.LCUCosmeticModule.class){
+					return lcuManager.initModule(type.getDeclaredConstructor(LCUManager.class,CosmeticManager.class), getModule(CosmeticManager.class));
+				}
 			}catch(NoSuchMethodException | SecurityException e){
 				throw new RuntimeException(e);
 			}
 		}
 		return lcuManager.getModule(type);
 	}
+	private ExecutorService executor = Executors.newCachedThreadPool();
 	private Module[] moduleArray;
 	private Module mainModule;
 	private JSMap dataMap;
@@ -235,7 +239,7 @@ public class BookOfThresholds{
 		isCustomLocale = localeString != null;
 	}
 	private CompletableFuture<HttpResponse<Object>> initClient(boolean checkUpdates) throws Throwable{
-		httpClient = HttpClient.newBuilder().sslContext(LCUManager.makeContext()).build();
+		httpClient = HttpClient.newBuilder().executor(executor).sslContext(LCUManager.makeContext()).build();
 		return checkUpdates ? httpClient.sendAsync(HttpRequest.newBuilder(new URI(GITHUB+"/version.json")).GET().build(),
 				JSONBodySubscriber.HANDLE_UTF8) : null;
 	}
@@ -252,6 +256,8 @@ public class BookOfThresholds{
 			assetManager = new AssetManager(getDataDragon(), localeString, isCustomLocale);
 		}catch(IOException e){
 			throw new UncheckedIOException(e);
+		} catch (InterruptedException | ExecutionException e) {
+			throw new RuntimeException(e);
 		}
 		JOptionPane.setDefaultLocale(assetManager.locale);
 	}
@@ -321,20 +327,21 @@ public class BookOfThresholds{
 		EventQueue.invokeAndWait(() -> mainModule.callerModel.setSelected(true));
 		long nextSaveTime = 0;
 		CompletableFuture<String> shutdown = null;
-		BiFunction<Map<?,?>,String,String> commentFunction = (a,b) -> {
+		BiFunction<Object,Object,String> commentFunction = (a,b) -> {
 			if(a == dataMap.map && b != null){
-				switch(b){
+				switch((String)b){
 				case "builds":return
 "The list of builds.";
 				case "locale":return
 "The localization for Rune Book. Can be one of: "+assetManager.listOfLocales;
 				case "lolVersion":return
-"If non-null, overrides the version of lol to use in Rune Book.\nThe following is guaranteed to work: \""+DataDragon.LATEST_KNOWN_LOL_VERSION+"\"";
+"If non-null, overrides the version of lol to use in Rune Book.\nThe following is guaranteed to work: \""+DataDragon0.LATEST_KNOWN_LOL_VERSION+"\"";
 				}
 			}
 			return null;
 		};
-		System.gc();//The AssetManager generates tons and tons of garbage. Best point to gc at.
+		dataDragon.flush();
+		System.gc();//The AssetManager and Data Dragon generate tons and tons of garbage. Best point to gc at.
 		while(true){
 			synchronized(this){
 				while(!(dataChangeFlag || isShutdown())){
@@ -383,6 +390,7 @@ public class BookOfThresholds{
 				}catch(Throwable t){
 					t.printStackTrace();
 				}
+				dataDragon.close();
 				System.out.println("Goodbye.");
 				System.exit(0);
 			}
